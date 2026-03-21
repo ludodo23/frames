@@ -87,14 +87,17 @@ struct Sampled
 
     Transform eval(double time) const
     {
-        if (t.empty())
+        if (t.empty()) {
             return Transform::Identity();
+        }
 
-        if (time <= t.front())
+        if (time <= t.front()) {
             return makeTransform(q.front(), p.front());
+        }
 
-        if (time >= t.back())
+        if (time >= t.back()) {
             return makeTransform(q.back(), p.back());
+        }
 
         int i = find(time);
 
@@ -118,32 +121,7 @@ enum class SourceType : uint8_t
     Identity,
     Constant,
     Sampled,
-    External,
-    Analytic
-};
-
-// TODO revoir External (appel à spice par ex) et Analytic (définition user)
-
-struct External
-{
-    Transform (*func)(double t, void* user);
-    void* user;
-};
-
-struct Analytic
-{
-    const int* deps;
-    int ndeps;
-
-    Transform (*func)(
-        double t,
-        const Transform* world,
-        const int* deps,
-        int ndeps,
-        void* user
-    );
-
-    void* user;
+    FixedAtEpoch  // TODO
 };
 
 // ============================================================
@@ -194,45 +172,6 @@ public:
         return id;
     }
 
-    // int addExternal(int p, External e)
-    // {
-    //     int id = size();
-    //     assert(p < id);
-
-    //     parent.push_back(p);
-    //     type.push_back(SourceType::External);
-    //     index.push_back(external.size());
-
-    //     external.push_back(e);
-
-    //     return id;
-    // }
-
-    // int addAnalytic(int p,
-    //                 const int* deps,
-    //                 int ndeps,
-    //                 Transform (*func)(double,
-    //                                   const Transform*,
-    //                                   const int*,
-    //                                   int,
-    //                                   void*),
-    //                 void* user = nullptr)
-    // {
-    //     int id = size();
-    //     assert(p < id);
-
-    //     for (int i = 0; i < ndeps; ++i)
-    //         assert(deps[i] < id);
-
-    //     parent.push_back(p);
-    //     type.push_back(SourceType::Analytic);
-    //     index.push_back(analytic.size());
-
-    //     analytic.push_back({deps, ndeps, func, user});
-
-    //     return id;
-    }
-
     // ========================================================
     // Update
     // ========================================================
@@ -265,21 +204,6 @@ public:
                 case SourceType::Sampled:
                     local = sampled[index[i]].eval(t);
                     break;
-
-                // case SourceType::External:
-                // {
-                //     auto& e = external[index[i]];
-                //     local = e.func(t, e.user);
-                //     break;
-                // }
-
-                // case SourceType::Analytic:
-                // {
-                //     auto& a = analytic[index[i]];
-                //     local = a.func(t, world.data(),
-                //                    a.deps, a.ndeps, a.user);
-                //     break;
-                // }
             }
 
             int p = parent[i];
@@ -302,12 +226,33 @@ public:
         return world[to].inverse() * world[from]
     }
 
-    Vector3 position(int frame, int reference_frame, int expression_frame=-1) {
-        // TODO
+    /// @brief get position of frame a w.r.t frame b, eventually projected in frame c.
+    /// @param a frame id to get the position.
+    /// @param b frame id w.r.t. get the position
+    /// @param c frame id for projection. with -1, b is used instead.
+    /// @return position of frame a in frame b (projected on frame c).
+    Vector3 position(int a, int b, int c=-1) {
+        // Tba = T_b_world T_world_a
+        const Transform Twa & world[a];
+        const Transform Twb & world[b];
+        Vector3 BAb = (Twb.inverse() * Twa]).translation();
+        if (c == -1) {
+            return BAb;
+        } else {
+            const Transform & Twc (world[c]);
+            return (Twc.linear().transpose() * Twb.linear()) * BAb; // BAc
+        }
     }
 
-    Quaternon attitude(int frame, int reference_frame) {
-        // TODO
+    /// @brief get attitude of frame a w.r.t. frame b.
+    /// @param a frame to get the attitude.
+    /// @param b frame w.r.t. get the attitute.
+    /// @return attitude quaterniin of a w.r.t. b.
+    Quaternion attitude(int a, int b) {
+        // Tba = T_b_world T_world_a
+        const Transform Twa & world[a];
+        const Transform Twb & world[b];
+        return Quaternion((Twb.inverse() * Twa).linear())
     }
 
     int size() const { return (int)parent.size(); }
@@ -322,8 +267,6 @@ private:
 
     std::vector<Transform> constants;
     std::vector<Sampled> sampled;
-    std::vector<External> external;
-    std::vector<Analytic> analytic;
 
     double last_time = std::numeric_limits<double>::quiet_NaN();
     bool dirty = true;
