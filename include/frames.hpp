@@ -48,6 +48,131 @@ using Transform = Eigen::Isometry3d;
 using Quaternion = Eigen::Quaterniond;
 using Vector3 = Eigen::Vector3d;
 
+
+
+// Axes
+enum class Axis { X, Y, Z };
+
+// Tags
+struct Intrinsic {};
+struct Extrinsic {};
+
+// ============================================================
+// Rotation élémentaire (compile-time)
+// ============================================================
+
+template<Axis A>
+inline Eigen::Matrix3d rot(double a);
+
+template<>
+inline Eigen::Matrix3d rot<Axis::X>(double a)
+{
+    double c = std::cos(a), s = std::sin(a);
+    Eigen::Matrix3d R;
+    R << 1,0,0,
+         0,c,-s,
+         0,s,c;
+    return R;
+}
+
+template<>
+inline Eigen::Matrix3d rot<Axis::Y>(double a)
+{
+    double c = std::cos(a), s = std::sin(a);
+    Eigen::Matrix3d R;
+    R <<  c,0,s,
+          0,1,0,
+         -s,0,c;
+    return R;
+}
+
+template<>
+inline Eigen::Matrix3d rot<Axis::Z>(double a)
+{
+    double c = std::cos(a), s = std::sin(a);
+    Eigen::Matrix3d R;
+    R << c,-s,0,
+         s, c,0,
+         0, 0,1;
+    return R;
+}
+
+// ============================================================
+// Euler → Quaternion (24 conventions)
+// ============================================================
+
+template<Axis A1, Axis A2, Axis A3, typename Mode>
+inline Quaternion eulerToQuaternion(double a1, double a2, double a3)
+{
+    if constexpr (std::is_same_v<Mode, Intrinsic>)
+    {
+        Eigen::Matrix3d R =
+            rot<A1>(a1) *
+            rot<A2>(a2) *
+            rot<A3>(a3);
+
+        return Quaternion(R);
+    }
+    else // Extrinsic
+    {
+        Eigen::Matrix3d R =
+            rot<A3>(a3) *
+            rot<A2>(a2) *
+            rot<A1>(a1);
+
+        return Quaternion(R);
+    }
+}
+
+// ============================================================
+// makeTransform overloads
+// ============================================================
+
+// Quaternion
+inline Transform makeTransform(const Quaternion& q,
+                               const Vector3& t)
+{
+    Transform T = Transform::Identity();
+    T.linear() = q.toRotationMatrix();
+    T.translation() = t;
+    return T;
+}
+
+// Rotation matrix (i -> world)
+inline Transform makeTransform(const Eigen::Matrix3d& R,
+                               const Vector3& t)
+{
+    Transform T = Transform::Identity();
+    T.linear() = R;
+    T.translation() = t;
+    return T;
+}
+
+// Euler direct
+template<Axis A1, Axis A2, Axis A3, typename Mode>
+inline Transform makeTransform(double a1, double a2, double a3,
+                               const Vector3& t)
+{
+    Quaternion q = eulerToQuaternion<A1,A2,A3,Mode>(a1,a2,a3);
+    return makeTransform(q, t);
+}
+
+// Helpers lisibles
+template<Axis A1, Axis A2, Axis A3>
+inline Transform makeIntrinsic(double a1, double a2, double a3,
+                               const Vector3& t)
+{
+    return makeTransform<A1,A2,A3,Intrinsic>(a1,a2,a3,t);
+}
+
+template<Axis A1, Axis A2, Axis A3>
+inline Transform makeExtrinsic(double a1, double a2, double a3,
+                               const Vector3& t)
+{
+    return makeTransform<A1,A2,A3,Extrinsic>(a1,a2,a3,t);
+}
+
+
 // ============================================================
 // Utils
 // ============================================================
