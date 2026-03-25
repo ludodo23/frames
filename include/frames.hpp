@@ -57,7 +57,7 @@ struct Intrinsic {};
 struct Extrinsic {};
 
 // ============================================================
-// Rotation élémentaire (compile-time)
+//  elementary rotation
 // ============================================================
 
 template<Axis A>
@@ -66,6 +66,7 @@ inline Matrix3 rot(double a);
 template<>
 inline Matrix3 rot<Axis::X>(double a) {
     double c = std::cos(a), s = std::sin(a);
+    Matrix3 R;
     Matrix3 R;
     R << 1,0,0,
          0,c,-s,
@@ -77,6 +78,7 @@ template<>
 inline Matrix3 rot<Axis::Y>(double a) {
     double c = std::cos(a), s = std::sin(a);
     Matrix3 R;
+    Matrix3 R;
     R <<  c,0,s,
           0,1,0,
          -s,0,c;
@@ -86,6 +88,7 @@ inline Matrix3 rot<Axis::Y>(double a) {
 template<>
 inline Matrix3 rot<Axis::Z>(double a) {
     double c = std::cos(a), s = std::sin(a);
+    Matrix3 R;
     Matrix3 R;
     R << c,-s,0,
          s, c,0,
@@ -202,6 +205,7 @@ template <typename T>
 struct Sampled {
     std::vector<double> t;
     std::vector<T> value;
+    std::vector<T> value;
 
     int find(double time) const {
         int lo = 0;
@@ -218,13 +222,16 @@ struct Sampled {
     T eval(int parent, double time, const FrameGraph& fg) const {
         if (t.empty()) {
             return T{};
+            return T{};
         }
 
         if (time <= t.front()) {
             return value.front();
+            return value.front();
         }
 
         if (time >= t.back()) {
+            return value.back();
             return value.back();
         }
 
