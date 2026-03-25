@@ -314,9 +314,12 @@ Vector3 pos_wrapper(int i, double t, const FrameGraph &g)
 class FrameGraph
 {
 public:
-    FrameGraph()
-    {
+    FrameGraph() {
         _add_root();
+    }
+
+    virtual ~FrameGraph() {
+        // TODO delete fn;
     }
 
     template <typename RotationType, typename TranslationType>
