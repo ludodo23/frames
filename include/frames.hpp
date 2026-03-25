@@ -47,8 +47,7 @@ namespace frames
 using Transform = Eigen::Isometry3d;
 using Quaternion = Eigen::Quaterniond;
 using Vector3 = Eigen::Vector3d;
-
-
+using Matrix3 = Eigen::Matrix3d;
 
 // Axes
 enum class Axis { X, Y, Z };
@@ -62,13 +61,12 @@ struct Extrinsic {};
 // ============================================================
 
 template<Axis A>
-inline Eigen::Matrix3d rot(double a);
+inline Matrix3 rot(double a);
 
 template<>
-inline Eigen::Matrix3d rot<Axis::X>(double a)
-{
+inline Matrix3 rot<Axis::X>(double a) {
     double c = std::cos(a), s = std::sin(a);
-    Eigen::Matrix3d R;
+    Matrix3 R;
     R << 1,0,0,
          0,c,-s,
          0,s,c;
@@ -76,10 +74,9 @@ inline Eigen::Matrix3d rot<Axis::X>(double a)
 }
 
 template<>
-inline Eigen::Matrix3d rot<Axis::Y>(double a)
-{
+inline Matrix3 rot<Axis::Y>(double a) {
     double c = std::cos(a), s = std::sin(a);
-    Eigen::Matrix3d R;
+    Matrix3 R;
     R <<  c,0,s,
           0,1,0,
          -s,0,c;
@@ -87,10 +84,9 @@ inline Eigen::Matrix3d rot<Axis::Y>(double a)
 }
 
 template<>
-inline Eigen::Matrix3d rot<Axis::Z>(double a)
-{
+inline Matrix3 rot<Axis::Z>(double a) {
     double c = std::cos(a), s = std::sin(a);
-    Eigen::Matrix3d R;
+    Matrix3 R;
     R << c,-s,0,
          s, c,0,
          0, 0,1;
@@ -102,20 +98,16 @@ inline Eigen::Matrix3d rot<Axis::Z>(double a)
 // ============================================================
 
 template<Axis A1, Axis A2, Axis A3, typename Mode>
-inline Quaternion eulerToQuaternion(double a1, double a2, double a3)
-{
-    if constexpr (std::is_same_v<Mode, Intrinsic>)
-    {
-        Eigen::Matrix3d R =
+inline Quaternion eulerToQuaternion(double a1, double a2, double a3) {
+    if constexpr (std::is_same_v<Mode, Intrinsic>) {
+        Matrix3 R =
             rot<A1>(a1) *
             rot<A2>(a2) *
             rot<A3>(a3);
 
         return Quaternion(R);
-    }
-    else // Extrinsic
-    {
-        Eigen::Matrix3d R =
+    } else {
+        Matrix3 R =
             rot<A3>(a3) *
             rot<A2>(a2) *
             rot<A1>(a1);
@@ -130,8 +122,7 @@ inline Quaternion eulerToQuaternion(double a1, double a2, double a3)
 
 // Quaternion
 inline Transform makeTransform(const Quaternion& q,
-                               const Vector3& t)
-{
+                               const Vector3& t) {
     Transform T = Transform::Identity();
     T.linear() = q.toRotationMatrix();
     T.translation() = t;
@@ -139,9 +130,8 @@ inline Transform makeTransform(const Quaternion& q,
 }
 
 // Rotation matrix (i -> world)
-inline Transform makeTransform(const Eigen::Matrix3d& R,
-                               const Vector3& t)
-{
+inline Transform makeTransform(const Matrix3& R,
+                               const Vector3& t) {
     Transform T = Transform::Identity();
     T.linear() = R;
     T.translation() = t;
@@ -151,8 +141,7 @@ inline Transform makeTransform(const Eigen::Matrix3d& R,
 // Euler direct
 template<Axis A1, Axis A2, Axis A3, typename Mode>
 inline Transform makeTransform(double a1, double a2, double a3,
-                               const Vector3& t)
-{
+                               const Vector3& t) {
     Quaternion q = eulerToQuaternion<A1,A2,A3,Mode>(a1,a2,a3);
     return makeTransform(q, t);
 }
@@ -160,49 +149,65 @@ inline Transform makeTransform(double a1, double a2, double a3,
 // Helpers lisibles
 template<Axis A1, Axis A2, Axis A3>
 inline Transform makeIntrinsic(double a1, double a2, double a3,
-                               const Vector3& t)
-{
+                               const Vector3& t) {
     return makeTransform<A1,A2,A3,Intrinsic>(a1,a2,a3,t);
 }
 
 template<Axis A1, Axis A2, Axis A3>
 inline Transform makeExtrinsic(double a1, double a2, double a3,
-                               const Vector3& t)
-{
+                               const Vector3& t) {
     return makeTransform<A1,A2,A3,Extrinsic>(a1,a2,a3,t);
 }
 
 
 // ============================================================
-// Utils
-// ============================================================
-
-inline Transform makeTransform(const Quaternion& q,
-                               const Vector3& t)
-{
-    Transform T = Transform::Identity();
-    T.linear() = q.toRotationMatrix();
-    T.translation() = t;
-    return T;
-}
-
-// ============================================================
 // Sampled
 // ============================================================
 
-struct Sampled
-{
-    std::vector<double> t;
-    std::vector<Quaternion> q;
-    std::vector<Vector3> p;
+// Forward
+class FrameGraph;
 
-    int find(double time) const
-    {
+
+template <typename T>
+T interp(double a, const T& v0, const T& v1);
+
+template<>
+Quaternion interp(double a, const Quaternion& q0, const Quaternion& q1) {
+    return q0.slerp(a, q1);
+}
+
+template<>
+Vector3 interp(double a, const Vector3& v0, const Vector3& v1) {
+    return (1.0 - a) * v0 + a * v1;
+}
+
+template <typename T>
+struct Constant {
+    T value;
+    T eval(int parent, double t, const FrameGraph& fg) const {
+        return value;
+    }
+};
+
+template <typename T>
+struct FixedAtEpoch {
+    T value;
+    double epoch;
+    T eval(int parent, double t, const FrameGraph& fg) const {
+        // TODO
+    }
+};
+
+template <typename T>
+struct Sampled {
+    std::vector<double> t;
+    std::vector<T> value;
+
+    int find(double time) const {
         int lo = 0;
         int hi = (int)t.size() - 1;
 
-        while (hi - lo > 1)
-        {
+        while (hi - lo > 1) {
             int mid = (lo + hi) / 2;
             if (t[mid] <= time) lo = mid;
             else hi = mid;
@@ -210,18 +215,17 @@ struct Sampled
         return lo;
     }
 
-    Transform eval(double time) const
-    {
+    T eval(int parent, double time, const FrameGraph& fg) const {
         if (t.empty()) {
-            return Transform::Identity();
+            return T{};
         }
 
         if (time <= t.front()) {
-            return makeTransform(q.front(), p.front());
+            return value.front();
         }
 
         if (time >= t.back()) {
-            return makeTransform(q.back(), p.back());
+            return value.back();
         }
 
         int i = find(time);
@@ -229,25 +233,28 @@ struct Sampled
         double t0 = t[i];
         double t1 = t[i+1];
         double a = (time - t0) / (t1 - t0);
+        T value0 = value[i];
+        T value1 = value[i+1];
 
-        Quaternion qr = q[i].slerp(a, q[i+1]);
-        Vector3 pr = (1.0 - a) * p[i] + a * p[i+1];
-
-        return makeTransform(qr, pr);
+        return interp(a, value0, value1);
     }
 };
 
+typedef Constant<Quaternion> ConstantRotation;
+typedef FixedAtEpoch<Quaternion> FixedAtEpochRotation;
+typedef Sampled<Quaternion> SampledRotation;
+
+typedef Constant<Vector3> ConstantTranslation;
+typedef FixedAtEpoch<Vector3> FixedAtEpochTranslation;
+typedef Sampled<Vector3> SampledTranslation;
+
+
 // ============================================================
-// Sources
+// Eval function types
 // ============================================================
 
-enum class SourceType : uint8_t
-{
-    Identity,
-    Constant,
-    Sampled,
-    FixedAtEpoch  // TODO
-};
+using EvalRotFn = Quaternion (*)(int, double, const FrameGraph&);
+using EvalPosFn = Vector3    (*)(int, double, const FrameGraph&);
 
 // ============================================================
 // FrameGraph
@@ -256,50 +263,18 @@ enum class SourceType : uint8_t
 class FrameGraph
 {
 public:
-
-    // TODO constructeur ?
-    int addRoot()
-    {
-        int id = size();
-
-        parent.push_back(-1);
-        type.push_back(SourceType::Identity);
-        index.push_back(0);
-
-        return id;
+    FrameGraph() {
+        _add_root();
     }
 
-    int addConstant(int p, const Transform& T)
-    {
+    template <typename RotationType, typename TranslationType>
+    int add_frame(int p, RotationType rotation, TranslationType translation) {
+        assert(p < size());
         int id = size();
-        assert(p < id);
-
-        parent.push_back(p);
-        type.push_back(SourceType::Constant);
-        index.push_back(constants.size());
-
-        constants.push_back(T);
-
-        return id;
+        _add_rotation<RotationType>(p, rotation);
+        _add_translation<TranslationType>(p, translation)
     }
 
-    int addSampled(int p, const Sampled& s)
-    {
-        int id = size();
-        assert(p < id);
-
-        parent.push_back(p);
-        type.push_back(SourceType::Sampled);
-        index.push_back(sampled.size());
-
-        sampled.push_back(s);
-
-        return id;
-    }
-
-    // ========================================================
-    // Update
-    // ========================================================
 
     void update(double t)
     {
@@ -316,20 +291,7 @@ public:
         {
             Transform local;
 
-            switch (type[i])
-            {
-                case SourceType::Identity:
-                    local = Transform::Identity();
-                    break;
-
-                case SourceType::Constant:
-                    local = constants[index[i]];
-                    break;
-
-                case SourceType::Sampled:
-                    local = sampled[index[i]].eval(t);
-                    break;
-            }
+            // TODO
 
             int p = parent[i];
 
@@ -380,18 +342,71 @@ public:
         return Quaternion((Twb.inverse() * Twa).linear())
     }
 
-    int size() const { return (int)parent.size(); }
+    int size() const { 
+        return (int)_parent.size();
+    }
 
 private:
 
-    std::vector<int> parent;
-    std::vector<SourceType> type;
-    std::vector<uint32_t> index;
+    int _add_root() {
+        int id = size();
 
-    std::vector<Transform> world;
+        _parent.push_back(-1);
+        _world.push_back(Transform::Identity());
 
-    std::vector<Transform> constants;
-    std::vector<Sampled> sampled;
+        return id;
+    }
+
+    // Add rotation
+
+    template <typename RotationType>
+    void _add_rotation(int p, RotationType rotation);
+
+    template <>
+    void _add_rotation(int p, ConstantRotation rotation) {
+        // TODO
+    }
+
+    template <>
+    void _add_rotation(int p, FixedAtEpochRotation rotation) {
+        // TODO
+    }
+
+    template <>
+    void _add_rotation(int p, SampledRotation rotation) {
+        // TODO
+    }
+
+
+    // add Translation
+
+    /// @brief 
+    /// @tparam TranslationType 
+    /// @param p 
+    /// @param translation 
+    template <typename TranslationType>
+    void _add_translation(int p, TranslationType translation);
+
+    /// @brief 
+    /// @param p 
+    /// @param translation 
+    template <>
+    void _add_translation(int p, ConstantTranslation translation) {
+        // TODO
+    }
+
+    template <>
+    void _add_translation(int p, FixedAtEpochTranslation translation) {
+        // TODO
+    }
+
+    template <>
+    void _add_translation(int p, SampledTranslation translation) {
+        // TODO
+    }
+
+    std::vector<int> _parent;
+    std::vector<Transform> _world;
 
     double last_time = std::numeric_limits<double>::quiet_NaN();
     bool dirty = true;
