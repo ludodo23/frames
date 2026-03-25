@@ -59,7 +59,7 @@ struct Intrinsic {};
 struct Extrinsic {};
 
 // ============================================================
-// Rotation élémentaire (compile-time)
+//  elementary rotation
 // ============================================================
 
 template<Axis A>
@@ -175,14 +175,31 @@ inline Transform makeExtrinsic(double a1, double a2, double a3,
 
 
 // ============================================================
-// Sampled
+// Relationship structure
 // ============================================================
 
+template <typename T>
+struct Constant {
+    T value;
+    T eval(double t) const {
+        return value;
+    }
+};
+
+template <typename T>
+struct FixedAtEpoch {
+    T value;
+    double epoch;
+    T evale(double t) const {
+
+    }
+};
+
+template <typename T>
 struct Sampled
 {
     std::vector<double> t;
-    std::vector<Quaternion> q;
-    std::vector<Vector3> p;
+    std::vector<T> value;
 
     int find(double time) const
     {
@@ -198,18 +215,18 @@ struct Sampled
         return lo;
     }
 
-    Transform eval(double time) const
+    T eval(double time) const
     {
         if (t.empty()) {
-            return Transform::Identity();
+            return T{};
         }
 
         if (time <= t.front()) {
-            return makeTransform(q.front(), p.front());
+            return value.front();
         }
 
         if (time >= t.back()) {
-            return makeTransform(q.back(), p.back());
+            return value.back();
         }
 
         int i = find(time);
@@ -217,11 +234,13 @@ struct Sampled
         double t0 = t[i];
         double t1 = t[i+1];
         double a = (time - t0) / (t1 - t0);
+        T value0 = value[i];
+        T value1 = value[i+1];
 
-        Quaternion qr = q[i].slerp(a, q[i+1]);
-        Vector3 pr = (1.0 - a) * p[i] + a * p[i+1];
+       // Quaternion qr = q[i].slerp(a, q[i+1]);
+       // Vector3 pr = (1.0 - a) * p[i] + a * p[i+1];
 
-        return makeTransform(qr, pr);
+        return interp(a, value0, value1);
     }
 };
 
