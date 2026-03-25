@@ -178,10 +178,12 @@ inline Transform makeExtrinsic(double a1, double a2, double a3,
 // Relationship structure
 // ============================================================
 
+class FrameGraph;
+
 template <typename T>
 struct Constant {
     T value;
-    T eval(double t) const {
+    T eval(int parent, double t, const FrameGraph& fg) const {
         return value;
     }
 };
@@ -190,7 +192,7 @@ template <typename T>
 struct FixedAtEpoch {
     T value;
     double epoch;
-    T evale(double t) const {
+    T eval(int parent, double t, const FrameGraph& fg) const {
 
     }
 };
@@ -215,7 +217,7 @@ struct Sampled
         return lo;
     }
 
-    T eval(double time) const
+    T eval(int parent, double time, const FrameGraph& fg) const
     {
         if (t.empty()) {
             return T{};
