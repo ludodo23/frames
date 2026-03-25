@@ -47,6 +47,7 @@ namespace frames
 using Transform = Eigen::Isometry3d;
 using Quaternion = Eigen::Quaterniond;
 using Vector3 = Eigen::Vector3d;
+using Matrix3 = Eigen::Matrix3d;
 
 
 
@@ -62,13 +63,13 @@ struct Extrinsic {};
 // ============================================================
 
 template<Axis A>
-inline Eigen::Matrix3d rot(double a);
+inline Matrix3 rot(double a);
 
 template<>
-inline Eigen::Matrix3d rot<Axis::X>(double a)
+inline Matrix3 rot<Axis::X>(double a)
 {
     double c = std::cos(a), s = std::sin(a);
-    Eigen::Matrix3d R;
+    Matrix3 R;
     R << 1,0,0,
          0,c,-s,
          0,s,c;
@@ -76,10 +77,10 @@ inline Eigen::Matrix3d rot<Axis::X>(double a)
 }
 
 template<>
-inline Eigen::Matrix3d rot<Axis::Y>(double a)
+inline Matrix3 rot<Axis::Y>(double a)
 {
     double c = std::cos(a), s = std::sin(a);
-    Eigen::Matrix3d R;
+    Matrix3 R;
     R <<  c,0,s,
           0,1,0,
          -s,0,c;
@@ -87,10 +88,10 @@ inline Eigen::Matrix3d rot<Axis::Y>(double a)
 }
 
 template<>
-inline Eigen::Matrix3d rot<Axis::Z>(double a)
+inline Matrix3 rot<Axis::Z>(double a)
 {
     double c = std::cos(a), s = std::sin(a);
-    Eigen::Matrix3d R;
+    Matrix3 R;
     R << c,-s,0,
          s, c,0,
          0, 0,1;
@@ -106,7 +107,7 @@ inline Quaternion eulerToQuaternion(double a1, double a2, double a3)
 {
     if constexpr (std::is_same_v<Mode, Intrinsic>)
     {
-        Eigen::Matrix3d R =
+        Matrix3 R =
             rot<A1>(a1) *
             rot<A2>(a2) *
             rot<A3>(a3);
@@ -115,7 +116,7 @@ inline Quaternion eulerToQuaternion(double a1, double a2, double a3)
     }
     else // Extrinsic
     {
-        Eigen::Matrix3d R =
+        Matrix3 R =
             rot<A3>(a3) *
             rot<A2>(a2) *
             rot<A1>(a1);
@@ -139,7 +140,7 @@ inline Transform makeTransform(const Quaternion& q,
 }
 
 // Rotation matrix (i -> world)
-inline Transform makeTransform(const Eigen::Matrix3d& R,
+inline Transform makeTransform(const Matrix3& R,
                                const Vector3& t)
 {
     Transform T = Transform::Identity();
@@ -172,19 +173,6 @@ inline Transform makeExtrinsic(double a1, double a2, double a3,
     return makeTransform<A1,A2,A3,Extrinsic>(a1,a2,a3,t);
 }
 
-
-// ============================================================
-// Utils
-// ============================================================
-
-inline Transform makeTransform(const Quaternion& q,
-                               const Vector3& t)
-{
-    Transform T = Transform::Identity();
-    T.linear() = q.toRotationMatrix();
-    T.translation() = t;
-    return T;
-}
 
 // ============================================================
 // Sampled
