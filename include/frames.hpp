@@ -319,7 +319,7 @@ public:
     }
 
     virtual ~FrameGraph() {
-        // TODO delete fn;
+        // TODO delete rot and trans;
     }
 
     template <typename RotationType, typename TranslationType>
