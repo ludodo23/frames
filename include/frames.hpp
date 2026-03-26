@@ -430,16 +430,6 @@ private:
         _pos_data.push_back(new TranslationType(translation));
     }
 
-    template <typename RotationType,typename TranslationType>
-    int _add_frame(int p) {
-         bool build_snapshot(false);
-         Transform snapshot(Transform::Identity());
-         if constexpr (std::is_same_v<RotationType, FixedAtEpochRotation>) {
-        // comportement spécialisé
-    } else {
-        // cas général
-    }
-    }
 
     std::vector<int> _parent;
     std::vector<Transform> _world;
