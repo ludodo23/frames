@@ -323,13 +323,13 @@ public:
     }
 
     template <typename RotationType, typename TranslationType>
-    int add_frame(int p, RotationType rotation, TranslationType translation)
+    int add_frame(int p, const RotationType& rotation, const TranslationType& translation)
     {
         assert(p < size());
         int id = size();
         _parent.push_back(p);
-        _add_rotation<RotationType>(p, rotation);
-        _add_translation<TranslationType>(p, translation)
+        _add_rotation<RotationType>(rotation);
+        _add_translation<TranslationType>(translation)
     }
 
     void update(double t)
@@ -417,17 +417,28 @@ private:
     }
 
     template <typename RotationType>
-    void _add_rotation(int p, RotationType rotation)
+    void _add_rotation(const RotationType& rotation)
     {
         _rot_fn.push_back(&rot_wrapper<RotationType>);
         _rot_data.push_back(new RotationType(rotation));
     }
 
     template <typename TranslationType>
-    void _add_translation(int p, TranslationType translation)
+    void _add_translation(const TranslationType& translation)
     {
         _pos_fn.push_back(&pos_wrapper<TranslationType>);
         _pos_data.push_back(new TranslationType(translation));
+    }
+
+    template <typename RotationType,typename TranslationType>
+    int _add_frame(int p) {
+         bool build_snapshot(false);
+         Transform snapshot(Transform::Identity());
+         if constexpr (std::is_same_v<RotationType, FixedAtEpochRotation>) {
+        // comportement spécialisé
+    } else {
+        // cas général
+    }
     }
 
     std::vector<int> _parent;
