@@ -339,25 +339,7 @@ public:
 
         _last_time = t;
 
-        size_t N = parent.size();
-        world.resize(N);
-
-        for (size_t i = 0; i < N; ++i)
-        {
-            Quaternion q = _rot_fn[i](i, t, *this);
-            Vector3 p    = _pos_fn[i](i, t, *this);
-
-            Transform local = makeTransform(q, p);
-
-            int p_id = _parent[i];
-
-            if (p_id < 0) {
-                _world[i] = local;
-            } else {
-                // T_world_i = T_world_parent ∘ T_parent_i
-                _world[i] = _world[p_id] * local;
-            }
-        }
+        _update(t);
     }
 
     const Transform &to_world_from(int id) const {
@@ -406,6 +388,26 @@ public:
     }
 
 private:
+
+    void _update(double t) {
+                for (size_t i = 0; i < N; ++i)
+        {
+            Quaternion q = _rot_fn[i](i, t, *this);
+            Vector3 p    = _pos_fn[i](i, t, *this);
+
+            Transform local = makeTransform(q, p);
+
+            int p_id = _parent[i];
+
+            if (p_id < 0) {
+                _world[i] = local;
+            } else {
+                // T_world_i = T_world_parent ∘ T_parent_i
+                _world[i] = _world[p_id] * local;
+            }
+        }
+
+    }
     int _add_root()
     {
         int id = size();
