@@ -222,7 +222,9 @@ struct FixedAtEpoch
     double epoch;
     T eval(int parent, double t, const FrameGraph &fg) const
     {
-        // TODO
+        // TODO find better
+        fg.update(t);
+        fg.transform(parent, parent+1);
     }
 };
 
