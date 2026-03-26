@@ -328,8 +328,10 @@ public:
         assert(p < size());
         int id = size();
         _parent.push_back(p);
+        _world.push_back(Transform::Identity());
         _add_rotation<RotationType>(rotation);
         _add_translation<TranslationType>(translation)
+        return id;
     }
 
     void update(double t)
