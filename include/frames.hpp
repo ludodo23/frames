@@ -209,7 +209,7 @@ template <typename T>
 struct Constant
 {
     T value;
-    T eval(int parent, double t, const FrameGraph &fg) const
+    T eval(double t, const FrameGraph &fg) const
     {
         return value;
     }
@@ -220,11 +220,9 @@ struct FixedAtEpoch
 {
     T value;
     double epoch;
-    T eval(int parent, double t, const FrameGraph &fg) const
+    T eval(double t, const FrameGraph &fg) const
     {
-        // TODO find better
-        fg.update(t);
-        fg.transform(parent, parent+1);
+        // TODO find how to
     }
 };
 
@@ -250,7 +248,7 @@ struct Sampled
         return lo;
     }
 
-    T eval(int parent, double time, const FrameGraph &fg) const
+    T eval(double time, const FrameGraph &fg) const
     {
         if (t.empty())
         {
@@ -294,19 +292,19 @@ typedef Sampled<Vector3> SampledTranslation;
 // Eval function types
 // ============================================================
 
-using EvalRotFn = Quaternion (*)(int, double, const FrameGraph &);
-using EvalPosFn = Vector3 (*)(int, double, const FrameGraph &);
+using EvalRotFn = Quaternion (*)(double, const FrameGraph &);
+using EvalPosFn = Vector3 (*)(double, const FrameGraph &);
 
 template <typename R>
-Quaternion rot_wrapper(int i, double t, const FrameGraph &g)
+Quaternion rot_wrapper(double t, const FrameGraph &g)
 {
-    return static_cast<R *>(g._rot_data[i])->eval(g._parent[i], t, g);
+    return static_cast<R *>(g._rot_data[i])->eval(t, g);
 }
 
 template <typename P>
-Vector3 pos_wrapper(int i, double t, const FrameGraph &g)
+Vector3 pos_wrapper(double t, const FrameGraph &g)
 {
-    return static_cast<P *>(g._pos_data[i])->eval(g._parent[i], t, g);
+    return static_cast<P *>(g._pos_data[i])->eval(t, g);
 }
 
 // ============================================================
@@ -360,8 +358,7 @@ public:
     /// @param b frame id w.r.t. get the position
     /// @param c frame id for projection. with -1, b is used instead.
     /// @return position of frame a in frame b (projected on frame c).
-    Vector3 position(int a, int b, int c = -1)
-    {
+    Vector3 position(int a, int b, int c = -1) {  // TODO two overloads 
         // Tba = T_b_world T_world_a
         const Transform Twa &_world[a];
         const Transform Twb &_world[b];
@@ -378,16 +375,14 @@ public:
     /// @param a frame to get the attitude.
     /// @param b frame w.r.t. get the attitute.
     /// @return attitude quaterniin of a w.r.t. b.
-    Quaternion attitude(int a, int b)
-    {
+    Quaternion attitude(int a, int b) {
         // Tba = T_b_world T_world_a
         const Transform Twa &_world[a];
         const Transform Twb &_world[b];
         return Quaternion((Twb.inverse() * Twa).linear())
     }
 
-    int size() const
-    {
+    int size() const {
         return (int)_parent.size();
     }
 
@@ -396,8 +391,8 @@ private:
     void _update(double t) {
                 for (size_t i = 0; i < N; ++i)
         {
-            Quaternion q = _rot_fn[i](i, t, *this);
-            Vector3 p    = _pos_fn[i](i, t, *this);
+            Quaternion q = _rot_fn[i](t, *this);
+            Vector3 p    = _pos_fn[i](t, *this);
 
             Transform local = makeTransform(q, p);
 
