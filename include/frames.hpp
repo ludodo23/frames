@@ -40,6 +40,8 @@
 #include <cassert>
 #include <limits>
 #include <cmath>
+#include <memory>
+#include <stdexcept>
 
 namespace frames
 {
@@ -77,7 +79,6 @@ inline Matrix3 rot<Axis::X>(double a)
 {
     double c = std::cos(a), s = std::sin(a);
     Matrix3 R;
-    Matrix3 R;
     R << 1, 0, 0,
         0, c, -s,
         0, s, c;
@@ -89,7 +90,6 @@ inline Matrix3 rot<Axis::Y>(double a)
 {
     double c = std::cos(a), s = std::sin(a);
     Matrix3 R;
-    Matrix3 R;
     R << c, 0, s,
         0, 1, 0,
         -s, 0, c;
@@ -100,7 +100,6 @@ template <>
 inline Matrix3 rot<Axis::Z>(double a)
 {
     double c = std::cos(a), s = std::sin(a);
-    Matrix3 R;
     Matrix3 R;
     R << c, -s, 0,
         s, c, 0,
@@ -115,17 +114,14 @@ inline Matrix3 rot<Axis::Z>(double a)
 template <Axis A1, Axis A2, Axis A3, typename Mode>
 inline Quaternion eulerToQuaternion(double a1, double a2, double a3)
 {
-    if constexpr (std::is_same_v<Mode, Intrinsic>)
-    {
+    if constexpr (std::is_same_v<Mode, Intrinsic>) {
         Matrix3 R =
             rot<A1>(a1) *
             rot<A2>(a2) *
             rot<A3>(a3);
 
         return Quaternion(R);
-    }
-    else
-    {
+    } else {
         Matrix3 R =
             rot<A3>(a3) *
             rot<A2>(a2) *
@@ -184,51 +180,42 @@ inline Transform makeExtrinsic(double a1, double a2, double a3,
 }
 
 // ============================================================
-// Sampled
+// CRTP for strategies definitions.
 // ============================================================
 
 // Forward
 class FrameGraph;
 
 template <typename T>
-T interp(double a, const T &v0, const T &v1);
-
-template <>
-Quaternion interp(double a, const Quaternion &q0, const Quaternion &q1)
-{
-    return q0.slerp(a, q1);
-}
-
-template <>
-Vector3 interp(double a, const Vector3 &v0, const Vector3 &v1)
-{
+T interp(double a, const T &v0, const T &v1) {
     return (1.0 - a) * v0 + a * v1;
 }
 
+template <>
+Quaternion interp(double a, const Quaternion &q0, const Quaternion &q1) {
+    return q0.slerp(a, q1);
+}
+
 template <typename T>
-struct Constant
-{
+struct Constant {
     T value;
-    T eval(double t, const FrameGraph &fg) const
-    {
+    T operator()(double t, const FrameGraph &fg) const {
         return value;
     }
 };
 
 template <typename T>
-struct FixedAtEpoch
-{
+struct FixedAtEpoch {
     T value;
     double epoch;
-    T eval(double t, const FrameGraph &fg) const
-    {
+    T operator()(double t, const FrameGraph &fg) const {
         // TODO find how to
+        throw std::runtime_error();
     }
 };
 
 template <typename T>
-struct Sampled
-{
+struct Sampled {
     std::vector<double> t;
     std::vector<T> value;
 
@@ -248,23 +235,16 @@ struct Sampled
         return lo;
     }
 
-    T eval(double time, const FrameGraph &fg) const
-    {
-        if (t.empty())
-        {
-            return T{};
+    T operator()(double time, const FrameGraph &fg) const {
+        if (t.empty()) {
             return T{};
         }
 
-        if (time <= t.front())
-        {
-            return value.front();
+        if (time <= t.front()) {
             return value.front();
         }
 
-        if (time >= t.back())
-        {
-            return value.back();
+        if (time >= t.back()) {
             return value.back();
         }
 
@@ -288,34 +268,50 @@ typedef Constant<Vector3> ConstantTranslation;
 typedef FixedAtEpoch<Vector3> FixedAtEpochTranslation;
 typedef Sampled<Vector3> SampledTranslation;
 
+
+
 // ============================================================
-// Eval function types
+// wrapper for custom types.
 // ============================================================
+template <typename T>
+class Interface {
+    struct Concept {
+        virtual ~Concept() = default;
+        virtual T eval(double t, const FrameGraph& g) const = 0;
+    };
 
-using EvalRotFn = Quaternion (*)(double, const FrameGraph &);
-using EvalPosFn = Vector3 (*)(double, const FrameGraph &);
+    template <typename Derived>
+    struct Model : Concept {
+        Derived impl;
 
-template <typename R>
-Quaternion rot_wrapper(double t, const FrameGraph &g)
-{
-    return static_cast<R *>(g._rot_data[i])->eval(t, g);
-}
+        Model(Derived v) : impl(std::move(v)) {}
 
-template <typename P>
-Vector3 pos_wrapper(double t, const FrameGraph &g)
-{
-    return static_cast<P *>(g._pos_data[i])->eval(t, g);
-}
+        T eval(double t, const FrameGraph& g) const override {
+            return impl(t, g);
+        }
+    };
+    
+    std::unique_ptr<Concept> self;
+
+public:
+    template <typename Derived>
+    Interface(Derived v) : self(std::make_unique<Model<Derived>>(std::move(v))) {}
+
+    T eval(double t, const FrameGraph& g) const {
+        return self->eval(t, g);
+    }
+    
+};
 
 // ============================================================
 // FrameGraph
 // ============================================================
 
-class FrameGraph
-{
+class FrameGraph {
 public:
+
     FrameGraph() {
-        _add_root();
+        _add_root(); 
     }
 
     virtual ~FrameGraph() {
@@ -323,14 +319,13 @@ public:
     }
 
     template <typename RotationType, typename TranslationType>
-    int add_frame(int p, const RotationType& rotation, const TranslationType& translation)
-    {
+    int add_frame(int p, const RotationType& rotation, const TranslationType& translation) {
         assert(p < size());
         int id = size();
         _parent.push_back(p);
         _world.push_back(Transform::Identity());
         _add_rotation<RotationType>(rotation);
-        _add_translation<TranslationType>(translation)
+        _add_translation<TranslationType>(translation);
         return id;
     }
 
@@ -345,12 +340,12 @@ public:
     }
 
     const Transform &to_world_from(int id) const {
-        return world[id];
+        return _world[id];
     }
 
     Transform transform(int to, int from) {
         // T_to_from = T_to_world ∘ T_world_from
-        return world[to].inverse() * world[from]
+        return _world[to].inverse() * _world[from];
     }
 
     /// @brief get position of frame a w.r.t frame b, eventually projected in frame c.
@@ -360,13 +355,13 @@ public:
     /// @return position of frame a in frame b (projected on frame c).
     Vector3 position(int a, int b, int c = -1) {  // TODO two overloads 
         // Tba = T_b_world T_world_a
-        const Transform Twa &_world[a];
-        const Transform Twb &_world[b];
-        Vector3 BAb = (Twb.inverse() * Twa]).translation();
+        const Transform & Twa (_world[a]);
+        const Transform & Twb (_world[b]);
+        Vector3 BAb = (Twb.inverse() * Twa).translation();
         if (c == -1) {
             return BAb;
         } else {
-            const Transform &Twc(_world[c]);
+            const Transform & Twc(_world[c]);
             return (Twc.linear().transpose() * Twb.linear()) * BAb; // BAc
         }
     }
@@ -377,9 +372,9 @@ public:
     /// @return attitude quaterniin of a w.r.t. b.
     Quaternion attitude(int a, int b) {
         // Tba = T_b_world T_world_a
-        const Transform Twa &_world[a];
-        const Transform Twb &_world[b];
-        return Quaternion((Twb.inverse() * Twa).linear())
+        const Transform & Twa (_world[a]);
+        const Transform & Twb (_world[b]);
+        return Quaternion((Twb.inverse() * Twa).linear());
     }
 
     int size() const {
@@ -389,21 +384,16 @@ public:
 private:
 
     void _update(double t) {
-                for (size_t i = 0; i < N; ++i)
-        {
-            Quaternion q = _rot_fn[i](t, *this);
-            Vector3 p    = _pos_fn[i](t, *this);
+        for (size_t i = 1; i < size(); ++i) { // 0 -> world = Id
+            Quaternion q = _rot_fn[i].eval(t, *this);
+            Vector3 p    = _pos_fn[i].eval(t, *this);
 
             Transform local = makeTransform(q, p);
 
             int p_id = _parent[i];
 
-            if (p_id < 0) {
-                _world[i] = local;
-            } else {
-                // T_world_i = T_world_parent ∘ T_parent_i
-                _world[i] = _world[p_id] * local;
-            }
+            // T_world_i = T_world_parent ∘ T_parent_i
+            _world[i] = _world[p_id] * local;
         }
 
     }
@@ -413,33 +403,28 @@ private:
 
         _parent.push_back(-1);
         _world.push_back(Transform::Identity());
+        _add_rotation(ConstantRotation{Quaternion::Identity()});
+        _add_translation(ConstantTranslation{Vector3::Zero()});
 
         return id;
     }
 
     template <typename RotationType>
-    void _add_rotation(const RotationType& rotation)
-    {
-        _rot_fn.push_back(&rot_wrapper<RotationType>);
-        _rot_data.push_back(new RotationType(rotation));
+    void _add_rotation(const RotationType& rotation) {
+        _rot_fn.emplace_back(rotation);
     }
 
     template <typename TranslationType>
-    void _add_translation(const TranslationType& translation)
-    {
-        _pos_fn.push_back(&pos_wrapper<TranslationType>);
-        _pos_data.push_back(new TranslationType(translation));
+    void _add_translation(const TranslationType& translation) {
+        _pos_fn.emplace_back(translation);
     }
 
 
     std::vector<int> _parent;
     std::vector<Transform> _world;
 
-    std::vector<EvalRotFn> _rot_fn;
-    std::vector<void *> _rot_data;
-
-    std::vector<EvalPosFn> _pos_fn;
-    std::vector<void *> _pos_data;
+    std::vector<Interface<Quaternion>> _rot_fn;
+    std::vector<Interface<Vector3>> _pos_fn;
 
     double _last_time = std::numeric_limits<double>::quiet_NaN();
 };
