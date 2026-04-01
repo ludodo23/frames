@@ -17,6 +17,6 @@ target_link_libraries(test_frames
 )
 
 include(CTest)
-include(Catch2)
+include(Catch)
 
-catch_discover_tests(test_interpolation)
+catch_discover_tests(test_frames)
