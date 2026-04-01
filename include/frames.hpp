@@ -317,16 +317,12 @@ public:
     template <typename RotationType, typename TranslationType>
     int add_frame(int p, const RotationType& rotation, const TranslationType& translation) {
         assert(p < size());
-        int id = size();
-        _parent.push_back(p);
-        _world.push_back(Transform::Identity());
-        _add_rotation<RotationType>(rotation);
-        _add_translation<TranslationType>(translation);
-        return id;
+        _add_rotation<RotationType>(p, rotation);
+        _add_translation<TranslationType>(p, translation);
+        return size() - 1;
     }
 
-    void update(double t)
-    {
+    void update(double t) {
         if (t == _last_time)
             return;
 
@@ -335,24 +331,21 @@ public:
         _update(t);
     }
 
-    const Transform &to_world_from(int id) const {
-        return _world[id];
+    Transform to_world_from(int id) const {
+        return makeTransform(_world_rotation[id], _world_position[id]);
     }
 
     Transform transform(int to, int from) {
         // T_to_from = T_to_world ∘ T_world_from
-        return _world[to].inverse() * _world[from];
+        return to_world_from(to).inverse() * to_world_from(from);
     }
 
-    /// @brief get position of frame a w.r.t frame b.
-    /// @param a frame id to get the position.
-    /// @param b frame id w.r.t. get the position
-    /// @return position of frame a in frame b (projected on frame b).
     Vector3 position(int a, int b) { 
         // Tba = T_b_world T_world_a
-        const Transform & Twa (_world[a]);
-        const Transform & Twb (_world[b]);
-        Vector3 BAb = (Twb.inverse() * Twa).translation();
+        const Vector3 & OAw (_world_position[a]);
+        const Vector3 & OBw (_world_position[b]);
+        const Quaternion & Qwb (_world_rotation[b]);
+        Vector3 BAb = Qwb.toRotationMatrix().transpose() * (OAw - OBw);
         return BAb;
     }
 
@@ -362,29 +355,27 @@ public:
     /// @param c frame id for projection. with -1, b is used instead.
     /// @return position of frame a in frame b (projected on frame c).
     Vector3 position(int a, int b, int c) {  // TODO two overloads 
-        // Tba = T_b_world T_world_a
-        const Transform & Twa (_world[a]);
-        const Transform & Twb (_world[b]);
-        const Transform & Twc(_world[c]);
+        const Quaternion & Qwb (_world_rotation[b]);
+        const Quaternion & Qwc (_world_rotation[c]);
 
-        Vector3 BAb = (Twb.inverse() * Twa).translation();
+        Vector3 BAb = position(a, b);
         
-        return (Twc.linear().transpose() * Twb.linear()) * BAb; // BAc
+        return (Qwc.conjugate() * Qwb).toRotationMatrix() * BAb; // BAc
     }
 
     /// @brief get attitude of frame a w.r.t. frame b.
     /// @param a frame to get the attitude.
     /// @param b frame w.r.t. get the attitute.
-    /// @return attitude quaterniin of a w.r.t. b.
+    /// @return attitude quaternion of a w.r.t. b.
     Quaternion attitude(int a, int b) {
         // Tba = T_b_world T_world_a
-        const Transform & Twa (_world[a]);
-        const Transform & Twb (_world[b]);
-        return Quaternion((Twb.inverse() * Twa).linear());
+        const Quaternion & Qwa (_world_rotation[a]);
+        const Quaternion & Qwb (_world_rotation[b]);
+        return Qwb.conjugate() * Qwa;
     }
 
     int size() const {
-        return (int)_world.size();
+        return (int)_world_rotation.size();
     }
 
 private:
@@ -394,40 +385,49 @@ private:
             Quaternion q = _rot_fn[i].eval(t, *this);
             Vector3 p    = _pos_fn[i].eval(t, *this);
 
-            Transform local = makeTransform(q, p);
+            int pr_id = _rot_parent[i];
+            int pp_id = _pos_parent[i];
 
-            int p_id = _parent[i];
-
-            // T_world_i = T_world_parent ∘ T_parent_i
-            _world[i] = _world[p_id] * local;
+            // Q_world_i = Q_world_parent * Q_parent_i
+            _world_rotation[i] = _world_rotation[pr_id] * q;
+            // OI_world = OP_world + R_world_parent * PI_parent
+            _world_position[i] = _world_position[pp_id] + _world_rotation[pp_id].toRotationMatrix() * p;
         }
 
     }
-    int _add_root()
-    {
+    
+    int _add_root() {
         int id = size();
 
-        _parent.push_back(-1);
-        _world.push_back(Transform::Identity());
-        _add_rotation(ConstantRotation{Quaternion::Identity()});
-        _add_translation(ConstantTranslation{Vector3::Zero()});
+        _add_rotation(-1, ConstantRotation{Quaternion::Identity()});
+        _add_translation(-1, ConstantTranslation{Vector3::Zero()});
 
         return id;
     }
 
     template <typename RotationType>
-    void _add_rotation(const RotationType& rotation) {
+    void _add_rotation(int parent, const RotationType& rotation) {
+        _rot_parent.push_back(parent);
         _rot_fn.emplace_back(rotation);
+        _world_rotation.emplace_back(Quaternion::Identity());
     }
 
     template <typename TranslationType>
-    void _add_translation(const TranslationType& translation) {
+    void _add_translation(int parent, const TranslationType& translation) {
+        _pos_parent.push_back(parent);
         _pos_fn.emplace_back(translation);
+        _world_position.emplace_back(Vector3::Zero());
     }
 
+    // TODO snapshot Translation / ROtation. Gérer transfo supp
+    // pour garder synchro.
 
-    std::vector<int> _parent;
-    std::vector<Transform> _world;
+
+    std::vector<Quaternion> _world_rotation;
+    std::vector<Vector3> _world_position;
+
+    std::vector<int> _rot_parent;
+    std::vector<int> _pos_parent;
 
     std::vector<Interface<Quaternion>> _rot_fn;
     std::vector<Interface<Vector3>> _pos_fn;
