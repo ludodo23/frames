@@ -2,6 +2,8 @@ cmake_minimum_required(VERSION 3.15)
 
 project(frames_tests)
 
+set(CMAKE_CXX_STANDARD 17)
+
 find_package(Eigen3 REQUIRED)
 find_package(Catch2 REQUIRED)
 

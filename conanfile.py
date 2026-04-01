@@ -40,7 +40,7 @@ class FramesConan(ConanFile):
             cmake = CMake(self)
             cmake.configure(build_script_folder=os.path.join(self.source_folder, "tests"))
             cmake.build()
-            self.run(os.path.join(self.cpp.build.bindir, "test_interpolation"))
+            self.run(os.path.join(self.cpp.build.bindir, "test_frames"))
 
     def package(self):
         # This will also copy the "include" folder
