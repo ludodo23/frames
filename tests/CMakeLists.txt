@@ -15,3 +15,8 @@ target_link_libraries(test_frames
     Eigen3::Eigen
     Catch2::Catch2WithMain
 )
+
+include(CTest)
+include(Catch2)
+
+catch_discover_tests(test_interpolation)
