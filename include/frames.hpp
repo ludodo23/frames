@@ -204,7 +204,6 @@ struct Constant {
 
 template <typename T>
 struct FixedAtEpoch {
-    T value;
     double epoch;
     T operator()(double t, const FrameGraph &fg) const {
         throw std::runtime_error("Not implemented !");
@@ -419,9 +418,19 @@ private:
         _world_position.emplace_back(Vector3::Zero());
     }
 
-    // TODO snapshot Translation / ROtation. Gérer transfo supp
-    // pour garder synchro.
+    template<>
+    void _add_rotation(int parent, const FixedAtEpochRotation& rotation) {
+        int parent_of_parent = _rot_parent[parent];
+        update(rotation.epoch);
+        _add_rotation(parent_of_parent, ConstantRotation{attitude(parent, parent_of_parent)});
+    }
 
+    template <>
+    void _add_translation(int parent, const FixedAtEpochTranslation& translation) {
+        int parent_of_parent = _pos_parent[parent];
+        update(translation.epoch);
+        _add_translation(parent_of_parent, ConstantTranslation{position(parent, parent_of_parent)});
+    }
 
     std::vector<Quaternion> _world_rotation;
     std::vector<Vector3> _world_position;

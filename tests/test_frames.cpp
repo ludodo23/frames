@@ -157,7 +157,7 @@ TEST_CASE("FixedAtEpoch", "[snapshot]")
     int R2 = g.add_frame(
         1,
         ConstantRotation{Quaternion::Identity()},
-        FixedAtEpochTranslation{Vector3::Zero(), t0}
+        FixedAtEpochTranslation{t0}
     );
 
     // maintenant on bouge le temps
