@@ -137,8 +137,7 @@ inline Quaternion eulerToQuaternion(double a1, double a2, double a3)
 
 // Quaternion
 inline Transform makeTransform(const Quaternion &q,
-                                const Vector3 &t)
-{
+                                const Vector3 &t) {
     Transform T = Transform::Identity();
     T.linear() = q.toRotationMatrix();
     T.translation() = t;
@@ -147,8 +146,7 @@ inline Transform makeTransform(const Quaternion &q,
 
 // Rotation matrix (i -> world)
 inline Transform makeTransform(const Matrix3 &R,
-                                const Vector3 &t)
-{
+                                const Vector3 &t) {
     Transform T = Transform::Identity();
     T.linear() = R;
     T.translation() = t;
@@ -158,8 +156,7 @@ inline Transform makeTransform(const Matrix3 &R,
 // Euler direct
 template <Axis A1, Axis A2, Axis A3, typename Mode>
 inline Transform makeTransform(double a1, double a2, double a3,
-                                const Vector3 &t)
-{
+                                const Vector3 &t) {
     Quaternion q = eulerToQuaternion<A1, A2, A3, Mode>(a1, a2, a3);
     return makeTransform(q, t);
 }
@@ -167,8 +164,7 @@ inline Transform makeTransform(double a1, double a2, double a3,
 // Helpers lisibles
 template <Axis A1, Axis A2, Axis A3>
 inline Transform makeIntrinsic(double a1, double a2, double a3,
-                                const Vector3 &t)
-{
+                                const Vector3 &t) {
     return makeTransform<A1, A2, A3, Intrinsic>(a1, a2, a3, t);
 }
 
@@ -209,8 +205,7 @@ struct FixedAtEpoch {
     T value;
     double epoch;
     T operator()(double t, const FrameGraph &fg) const {
-        // TODO find how to
-        throw std::runtime_error();
+        throw std::runtime_error("Not implemented !");
     }
 };
 
@@ -315,7 +310,6 @@ public:
     }
 
     virtual ~FrameGraph() {
-        // TODO delete rot and trans;
     }
 
     template <typename RotationType, typename TranslationType>
@@ -348,22 +342,32 @@ public:
         return _world[to].inverse() * _world[from];
     }
 
+    /// @brief get position of frame a w.r.t frame b.
+    /// @param a frame id to get the position.
+    /// @param b frame id w.r.t. get the position
+    /// @return position of frame a in frame b (projected on frame b).
+    Vector3 position(int a, int b) { 
+        // Tba = T_b_world T_world_a
+        const Transform & Twa (_world[a]);
+        const Transform & Twb (_world[b]);
+        Vector3 BAb = (Twb.inverse() * Twa).translation();
+        return BAb;
+    }
+
     /// @brief get position of frame a w.r.t frame b, eventually projected in frame c.
     /// @param a frame id to get the position.
     /// @param b frame id w.r.t. get the position
     /// @param c frame id for projection. with -1, b is used instead.
     /// @return position of frame a in frame b (projected on frame c).
-    Vector3 position(int a, int b, int c = -1) {  // TODO two overloads 
+    Vector3 position(int a, int b, int c) {  // TODO two overloads 
         // Tba = T_b_world T_world_a
         const Transform & Twa (_world[a]);
         const Transform & Twb (_world[b]);
+        const Transform & Twc(_world[c]);
+
         Vector3 BAb = (Twb.inverse() * Twa).translation();
-        if (c == -1) {
-            return BAb;
-        } else {
-            const Transform & Twc(_world[c]);
-            return (Twc.linear().transpose() * Twb.linear()) * BAb; // BAc
-        }
+        
+        return (Twc.linear().transpose() * Twb.linear()) * BAb; // BAc
     }
 
     /// @brief get attitude of frame a w.r.t. frame b.
@@ -378,7 +382,7 @@ public:
     }
 
     int size() const {
-        return (int)_parent.size();
+        return (int)_world.size();
     }
 
 private:

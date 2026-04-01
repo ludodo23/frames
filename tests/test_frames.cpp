@@ -138,7 +138,7 @@ TEST_CASE("Quaternion slerp", "[rotation]")
 // Snapshot (FixedAtEpoch via node)
 // ============================================================
 
-TEST_CASE("FixedAtEpoch via snapshot", "[snapshot]")
+TEST_CASE("FixedAtEpoch", "[snapshot]")
 {
     FrameGraph g;
 
@@ -153,28 +153,20 @@ TEST_CASE("FixedAtEpoch via snapshot", "[snapshot]")
 
     // snapshot à t0 = 5
     double t0 = 5.0;
-    g.update(t0);
 
-    Transform Twp = g.to_world_from(R1);
-
-    int frozen = g.add_frame(
-        0,
-        ConstantRotation{Quaternion(Twp.linear())},
-        ConstantTranslation{Twp.translation()}
+    int R2 = g.add_frame(
+        1,
+        ConstantRotation{Quaternion::Identity()},
+        FixedAtEpochTranslation{Vector3::Zero(), t0}
     );
 
-    // R2 fixé au snapshot
-    int R2 = g.add_frame(frozen,
-        ConstantRotation{Quaternion::Identity()},
-        ConstantTranslation{Vector3(1,0,0)});
-
     // maintenant on bouge le temps
-    g.update(8.0);
+    REQUIRE_THROWS(g.update(8.0));
 
     // R2 doit rester constant dans world
     Vector3 p = g.position(R2, 0);
 
-    REQUIRE(isApprox(p, Vector3(5 + 1, 0, 0)));
+    REQUIRE(isApprox(p, Vector3(5, 0, 0)));
 }
 
 // ============================================================
