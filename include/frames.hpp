@@ -409,6 +409,7 @@ private:
             // Q_world_i = Q_world_parent * Q_parent_i
             _world_rotation[i] = _world_rotation[pr_id] * q;
     }
+}
 
     void _update_translation(double t) {
         _clean = false;
