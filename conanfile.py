@@ -24,7 +24,7 @@ class FramesConan(ConanFile):
             self.version = version.group(1)
 
     def requirements(self):
-        self.requires("Eigen/[3.4.0]")
+        self.requires("eigen/[^3.4.0]")
 
     def build_requirements(self):
         self.test_requires("catch2/3.4.0")
