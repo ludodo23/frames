@@ -426,30 +426,28 @@ private:
 
     template <typename RotationType>
     void _add_rotation(int parent, const RotationType& rotation) {
-        _rot_parent.push_back(parent);
-        _rot_fn.emplace_back(rotation);
-        _world_rotation.emplace_back(Quaternion::Identity());
+        if constexpr (std::is_same_v<RotationType, FixedAtEpochRotation>) {
+            int parent_of_parent = _rot_parent[parent];
+            _update_rotation(rotation.epoch);
+            _add_rotation(parent_of_parent, ConstantRotation{attitude(parent, parent_of_parent)});
+        } else {
+            _rot_parent.push_back(parent);
+            _rot_fn.emplace_back(rotation);
+             _world_rotation.emplace_back(Quaternion::Identity());
+        }
     }
 
     template <typename TranslationType>
-    void _add_translation(int parent, const TranslationType& translation) {
-        _pos_parent.push_back(parent);
-        _pos_fn.emplace_back(translation);
-        _world_position.emplace_back(Vector3::Zero());
-    }
-
-    template<>
-    void _add_rotation(int parent, const FixedAtEpochRotation& rotation) {
-        int parent_of_parent = _rot_parent[parent];
-        _update_rotation(rotation.epoch);
-        _add_rotation(parent_of_parent, ConstantRotation{attitude(parent, parent_of_parent)});
-    }
-
-    template <>
-    void _add_translation(int parent, const FixedAtEpochTranslation& translation) {
-        int parent_of_parent = _pos_parent[parent];
-        _update_translation(translation.epoch);
+   void _add_translation(int parent, const TranslationType& translation) {
+        if constexpr (std::is_same_v<TranslationType, FixedAtEpochTranslation>) {
+            int parent_of_parent = _pos_parent[parent];
+            _update_translation(translation.epoch);
         _add_translation(parent_of_parent, ConstantTranslation{position(parent, parent_of_parent)});
+        } else {
+            _pos_parent.push_back(parent);
+            _pos_fn.emplace_back(translation);
+            _world_position.emplace_back(Vector3::Zero());
+        }
     }
 
     std::vector<Quaternion> _world_rotation;
