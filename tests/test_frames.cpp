@@ -161,12 +161,18 @@ TEST_CASE("FixedAtEpoch", "[snapshot]")
     );
 
     // maintenant on bouge le temps
-    REQUIRE_THROWS(g.update(8.0));
+    g.update(8.0);
 
     // R2 doit rester constant dans world
     Vector3 p = g.position(R2, 0);
 
     REQUIRE(isApprox(p, Vector3(5, 0, 0)));
+    REQUIRE(!isApprox(g.position(R2, 0), g.position(R1, 0)));
+
+
+    g.update(t0);
+
+    REQUIRE(isApprox(g.position(R2, 0), g.position(R1, 0)));
 }
 
 // ============================================================

@@ -413,7 +413,18 @@ private:
 
     void _update_translation(double t) {
         _clean = false;
-        _update(t);
+        for(size_t i(1); i < _pos_fn.size(); ++i) { // here _rot_fn should have one more element than _pos_fn.
+            Quaternion q = _rot_fn[i].eval(t, *this);
+            Vector3 p    = _pos_fn[i].eval(t, *this);
+
+            int pr_id = _rot_parent[i];
+            int pp_id = _pos_parent[i];
+
+            // Q_world_i = Q_world_parent * Q_parent_i
+            _world_rotation[i] = _world_rotation[pr_id] * q;
+            // OI_world = OP_world + R_world_parent * PI_parent
+            _world_position[i] = _world_position[pp_id] + _world_rotation[pp_id].toRotationMatrix() * p;
+        }
     }
     
     int _add_root() {
@@ -439,7 +450,7 @@ private:
     }
 
     template <typename TranslationType>
-   void _add_translation(int parent, const TranslationType& translation) {
+    void _add_translation(int parent, const TranslationType& translation) {
         if constexpr (std::is_same_v<TranslationType, FixedAtEpochTranslation>) {
             int parent_of_parent = _pos_parent[parent];
             _update_translation(translation.epoch);
