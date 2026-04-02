@@ -306,7 +306,8 @@ public:
 class FrameGraph {
 public:
 
-    FrameGraph() {
+    FrameGraph() :
+        _clean(true) {
         _add_root(); 
     }
 
@@ -322,12 +323,15 @@ public:
     }
 
     void update(double t) {
-        if (t == _last_time)
+        if (t == _last_time && _clean) {
             return;
+        }
 
         _last_time = t;
 
         _update(t);
+
+        _clean = true;
     }
 
     Transform to_world_from(int id) const {
@@ -394,6 +398,22 @@ private:
         }
 
     }
+
+    void _update_rotation(double t) {
+        _clean = false;
+        for (size_t i = 1; i < _rot_fn.size(); ++i) { // 0 -> world = Id
+            Quaternion q = _rot_fn[i].eval(t, *this);
+
+            int pr_id = _rot_parent[i];
+
+            // Q_world_i = Q_world_parent * Q_parent_i
+            _world_rotation[i] = _world_rotation[pr_id] * q;
+    }
+
+    void _update_translation(double t) {
+        _clean = false;
+        _update(t);
+    }
     
     int _add_root() {
         int id = size();
@@ -421,14 +441,14 @@ private:
     template<>
     void _add_rotation(int parent, const FixedAtEpochRotation& rotation) {
         int parent_of_parent = _rot_parent[parent];
-        update(rotation.epoch);
+        _update_rotation(rotation.epoch);
         _add_rotation(parent_of_parent, ConstantRotation{attitude(parent, parent_of_parent)});
     }
 
     template <>
     void _add_translation(int parent, const FixedAtEpochTranslation& translation) {
         int parent_of_parent = _pos_parent[parent];
-        update(translation.epoch);
+        _update_translation(translation.epoch);
         _add_translation(parent_of_parent, ConstantTranslation{position(parent, parent_of_parent)});
     }
 
@@ -442,6 +462,7 @@ private:
     std::vector<Interface<Vector3>> _pos_fn;
 
     double _last_time = std::numeric_limits<double>::quiet_NaN();
+    bool _clean;
 };
 
 }
