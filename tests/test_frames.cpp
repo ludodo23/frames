@@ -93,9 +93,7 @@ TEST_CASE("Sampled interpolation", "[sampled]")
 {
     FrameGraph g;
 
-    SampledTranslation st;
-    st.t = {0.0, 10.0};
-    st.value = {Vector3(0,0,0), Vector3(10,0,0)};
+    SampledTranslation st({0.0, 10.0}, {Vector3(0,0,0), Vector3(10,0,0)});
 
     int f = g.add_frame(0,
         ConstantRotation{Quaternion::Identity()},
@@ -116,12 +114,7 @@ TEST_CASE("Quaternion slerp", "[rotation]")
 {
     FrameGraph g;
 
-    SampledRotation sr;
-    sr.t = {0.0, 1.0};
-    sr.value = {
-        Quaternion::Identity(),
-        Quaternion(Eigen::AngleAxisd(PI, Vector3::UnitZ()))
-    };
+    SampledRotation sr({0.0, 1.0}, {Quaternion::Identity(), Quaternion(Eigen::AngleAxisd(PI, Vector3::UnitZ()))});
 
     int f = g.add_frame(0, sr, ConstantTranslation{Vector3::Zero()});
 
@@ -143,9 +136,7 @@ TEST_CASE("FixedAtEpoch", "[snapshot]")
     FrameGraph g;
 
     // R1 bouge
-    SampledTranslation st;
-    st.t = {0.0, 10.0};
-    st.value = {Vector3(0,0,0), Vector3(10,0,0)};
+    SampledTranslation st({0.0, 10.0}, {Vector3(0,0,0), Vector3(10,0,0)});
 
     int R1 = g.add_frame(0,
         ConstantRotation{Quaternion::Identity()},

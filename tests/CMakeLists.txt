@@ -7,7 +7,7 @@ set(CMAKE_CXX_STANDARD 17)
 find_package(Eigen3 REQUIRED)
 find_package(Catch2 REQUIRED)
 
-add_executable(test_frames test_frames.cpp)
+add_executable(test_frames test_frames.cpp test_benchmark.cpp)
 
 target_include_directories(test_frames PRIVATE ../include)
 

@@ -10,10 +10,17 @@ from conan.tools.build import check_min_cppstd
 class FramesConan(ConanFile):
     name = "frames"
     settings = "os", "arch", "compiler", "build_type"
-    exports_sources = "include/*", "test/*"
+    exports_sources = "include/*", "tests/*"
     no_copy_source = True
     generators = "CMakeToolchain", "CMakeDeps"
     package_type = "header-library"
+
+    options = {
+        "with_interpolation": [True, False],
+    }
+    default_options = {
+        "with_interpolation": False,
+    }
 
     def set_version(self):
         header = Path(self.recipe_folder) / "include" / "frames.hpp"
@@ -25,6 +32,8 @@ class FramesConan(ConanFile):
 
     def requirements(self):
         self.requires("eigen/[^3.4.0]")
+        if self.options.with_interpolation:
+            self.requires("interpolation/^0.1.0")
 
     def build_requirements(self):
         self.test_requires("catch2/3.4.0")

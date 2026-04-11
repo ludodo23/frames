@@ -43,35 +43,34 @@
 #include <memory>
 #include <stdexcept>
 
+#ifdef FRAMES_WITH_INTERPOLATION
+#include <interpolation/interpolation.hpp>
+#endif
+
 #define FRAMES_VERSION "0.1.0"
 
 namespace frames
 {
+
+// ============================================================
+//  Backend
+// ============================================================
 
 using Transform = Eigen::Isometry3d;
 using Quaternion = Eigen::Quaterniond;
 using Vector3 = Eigen::Vector3d;
 using Matrix3 = Eigen::Matrix3d;
 
-// Axes
-enum class Axis
-{
-    X,
-    Y,
-    Z
-};
-
-// Tags
-struct Intrinsic
-{
-};
-struct Extrinsic
-{
-};
-
 // ============================================================
 //  elementary rotation
 // ============================================================
+
+// Axes
+enum class Axis {X, Y, Z};
+
+// Tags
+struct Intrinsic {};
+struct Extrinsic {};
 
 template <Axis A>
 inline Matrix3 rot(double a);
@@ -178,21 +177,33 @@ inline Transform makeExtrinsic(double a1, double a2, double a3,
 }
 
 // ============================================================
-// CRTP for strategies definitions.
+// strategies definitions.
 // ============================================================
 
 // Forward
 class FrameGraph;
 
+#ifdef FRAMES_WITH_INTERPOLATION
+// Transform lerp of interpolation into slerp for Quaternion
+namespace interpolation {
+template <>
+    constexpr Quaternion lerp(const Quaternion &a, const Quaternion &b, double t) {
+    return a.slerp(t, b);
+}
+} // namespace interpolation
+
+#else
 template <typename T>
 T interp(double a, const T &v0, const T &v1) {
     return (1.0 - a) * v0 + a * v1;
 }
 
 template <>
-Quaternion interp(double a, const Quaternion &q0, const Quaternion &q1) {
-    return q0.slerp(a, q1);
+inline Quaternion interp(double t, const Quaternion &q0, const Quaternion &q1) {
+    return q0.slerp(t, q1);
 }
+
+#endif
 
 template <typename T>
 struct Constant {
@@ -214,7 +225,37 @@ template <typename T>
 struct Sampled {
     std::vector<double> t;
     std::vector<T> value;
+    std::vector<T> derivative;
 
+private:
+    Sampled() = delete;
+
+#ifdef FRAMES_WITH_INTERPOLATION
+private:
+    std::unique_ptr<interpolation::Interpolator> _interp;
+    void _init_interp() {
+        _interp = std::make_unique<interpolation::LinearInterpolator<T>>(
+            std::make_shared<const std::vector<double>>(t),
+            std::make_shared<const std::vector<T>>(value)
+        );
+    }
+
+    void _init_interp_cat() {
+        _interp = std::make_unique<interpolation::CatmullRomInterpolator<T>>(
+            std::make_shared<const std::vector<double>>(t),
+            std::make_shared<const std::vector<T>>(value)
+        );
+    }
+
+    void _init_interp_cub() {
+        _interp = std::make_unique<interpolation::CubicHermiteInterpolator<T>>(
+            std::make_shared<const std::vector<double>>(t),
+            std::make_shared<const std::vector<T>>(value),
+            std::make_shared<const std::vector<T>>(derivative)
+        );
+    }
+public:
+#else
     int find(double time) const
     {
         int lo = 0;
@@ -230,8 +271,30 @@ struct Sampled {
         }
         return lo;
     }
+#endif
+public:
+    Sampled(
+        const std::vector<double> & t_,
+        const std::vector<T> & value_
+    ) : Sampled(t_, value_, {}) {}
+
+    Sampled(
+        const std::vector<double> & t_,
+        const std::vector<T> & value_,
+        const std::vector<T> & derivative_
+    ) : t(t_), value(value_), derivative(derivative_) {
+#ifdef FRAMES_WITH_INTERPOLATION
+        _init_interp();
+#else
+        assert(!t.empty());
+        assert(t.size() == value.size());
+#endif
+    }
 
     T operator()(double time, const FrameGraph &fg) const {
+#ifdef FRAMES_WITH_INTERPOLATION
+        return _interp->eval(time);
+#else
         if (t.empty()) {
             return T{};
         }
@@ -249,12 +312,32 @@ struct Sampled {
         double t0 = t[i];
         double t1 = t[i + 1];
         double a = (time - t0) / (t1 - t0);
-        T value0 = value[i];
-        T value1 = value[i + 1];
+        const T& value0 = value[i];
+        const T& value1 = value[i + 1];
 
         return interp(a, value0, value1);
+#endif
     }
 };
+
+#ifdef FRAMES_WITH_INTERPOLATION
+template<>
+Sampled<Vector3>::Sampled(
+    const std::vector<double> & t_,
+    const std::vector<Vector3> & value_
+    ) : t(t_), value(value_) {
+    _init_interp_cat();
+}
+
+Sampled<Vector3>::Sampled(
+    const std::vector<double> & t_,
+    const std::vector<Vector3> & value_,
+    const std::vector<Vector3> & derivative_
+    ) : t(t_), value(value_), derivative(derivative_) {
+    _init_interp_cub();
+}
+
+#endif
 
 typedef Constant<Quaternion> ConstantRotation;
 typedef FixedAtEpoch<Quaternion> FixedAtEpochRotation;
