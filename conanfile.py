@@ -16,10 +16,10 @@ class FramesConan(ConanFile):
     package_type = "header-library"
 
     options = {
-        "with_interpolation": [True, False],
+        "with_eigen": [True, False],
     }
     default_options = {
-        "with_interpolation": False,
+        "with_eigen": True,
     }
 
     def set_version(self):
@@ -31,9 +31,9 @@ class FramesConan(ConanFile):
             self.version = version.group(1)
 
     def requirements(self):
-        self.requires("eigen/[^3.4.0]")
-        if self.options.with_interpolation:
-            self.requires("interpolation/^0.1.0")
+        self.requires("interpolation/0.1.0")
+        if self.options.with_eigen:
+            self.requires("eigen/[^3.4.0]")
 
     def build_requirements(self):
         self.test_requires("catch2/3.4.0")

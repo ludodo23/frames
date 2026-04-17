@@ -4,6 +4,7 @@
 #include "frames.hpp"
 
 using namespace frames;
+using frames::EigenBackend;
 
 constexpr double PI = 3.14159265358979323846;
 
@@ -27,16 +28,15 @@ static bool isApprox(const Quaternion& q1, const Quaternion& q2, double eps = 1e
 
 TEST_CASE("Root frame is identity", "[basic]")
 {
-    FrameGraph g;
+    EigenFrameGraph g;
 
     REQUIRE(g.size() == 1);
 
     g.update(0.0);
 
-    const Transform& T = g.to_world_from(0);
+    Quaternion Q = g.attitude(0, 0);
 
-    REQUIRE(isApprox(T.translation(), Vector3::Zero()));
-    REQUIRE(isApprox(Quaternion(T.linear()), Quaternion::Identity()));
+    REQUIRE(isApprox(Q, EigenBackend::quat_identity()));
 }
 
 // ============================================================
@@ -45,21 +45,22 @@ TEST_CASE("Root frame is identity", "[basic]")
 
 TEST_CASE("Constant frame", "[constant]")
 {
-    FrameGraph g;
+    EigenFrameGraph g;
 
-    Quaternion q = Quaternion::Identity();
+    Quaternion q = EigenBackend::quat_identity();
     Vector3 p(1.0, 2.0, 3.0);
 
     int f = g.add_frame(0,
         ConstantRotation{q},
         ConstantTranslation{p});
 
-    g.update(0.0);
+    g.update(5.0);
 
-    const Transform& T = g.to_world_from(f);
+    Quaternion Q = g.attitude(f, 0);
+    Vector3 P = g.position(f, 0);
 
-    REQUIRE(isApprox(T.translation(), p));
-    REQUIRE(isApprox(Quaternion(T.linear()), q));
+    REQUIRE(isApprox(Q, EigenBackend::quat_identity()));
+    REQUIRE(isApprox(P, p));
 }
 
 // ============================================================
@@ -68,19 +69,23 @@ TEST_CASE("Constant frame", "[constant]")
 
 TEST_CASE("Chain composition", "[composition]")
 {
-    FrameGraph g;
+    EigenFrameGraph g;
 
     int f1 = g.add_frame(0,
-        ConstantRotation{Quaternion::Identity()},
+        ConstantRotation{EigenBackend::quat_identity()},
         ConstantTranslation{Vector3(1,0,0)});
 
     int f2 = g.add_frame(f1,
-        ConstantRotation{Quaternion::Identity()},
+        ConstantRotation{EigenBackend::quat_identity()},
         ConstantTranslation{Vector3(0,1,0)});
 
     g.update(0.0);
 
     Vector3 p = g.position(f2, 0);
+
+    REQUIRE(isApprox(p, Vector3(1,1,0)));
+
+    g.update(7.0);
 
     REQUIRE(isApprox(p, Vector3(1,1,0)));
 }
@@ -91,12 +96,12 @@ TEST_CASE("Chain composition", "[composition]")
 
 TEST_CASE("Sampled interpolation", "[sampled]")
 {
-    FrameGraph g;
+    EigenFrameGraph g;
 
     SampledTranslation st({0.0, 10.0}, {Vector3(0,0,0), Vector3(10,0,0)});
 
     int f = g.add_frame(0,
-        ConstantRotation{Quaternion::Identity()},
+        ConstantRotation{EigenBackend::quat_identity()},
         st);
 
     g.update(5.0);
@@ -104,6 +109,10 @@ TEST_CASE("Sampled interpolation", "[sampled]")
     Vector3 p = g.position(f, 0);
 
     REQUIRE(isApprox(p, Vector3(5,0,0)));
+
+    g.update(7.0);
+
+    REQUIRE(isApprox(p, Vector3(7,0,0)));
 }
 
 // ============================================================
@@ -112,11 +121,11 @@ TEST_CASE("Sampled interpolation", "[sampled]")
 
 TEST_CASE("Quaternion slerp", "[rotation]")
 {
-    FrameGraph g;
+    EigenFrameGraph g;
 
-    SampledRotation sr({0.0, 1.0}, {Quaternion::Identity(), Quaternion(Eigen::AngleAxisd(PI, Vector3::UnitZ()))});
+    SampledRotation sr({0.0, 1.0}, {EigenBackend::quat_identity(), Quaternion(Eigen::AngleAxisd(PI, Vector3::UnitZ()))});
 
-    int f = g.add_frame(0, sr, ConstantTranslation{Vector3::Zero()});
+    int f = g.add_frame(0, sr, ConstantTranslation{EigenBackend::vec_zero()});
 
     g.update(0.5);
 
@@ -133,13 +142,13 @@ TEST_CASE("Quaternion slerp", "[rotation]")
 
 TEST_CASE("FixedAtEpoch", "[snapshot]")
 {
-    FrameGraph g;
+    EigenFrameGraph g;
 
     // R1 bouge
     SampledTranslation st({0.0, 10.0}, {Vector3(0,0,0), Vector3(10,0,0)});
 
     int R1 = g.add_frame(0,
-        ConstantRotation{Quaternion::Identity()},
+        ConstantRotation{EigenBackend::quat_identity()},
         st);
 
     // snapshot à t0 = 5
@@ -147,8 +156,8 @@ TEST_CASE("FixedAtEpoch", "[snapshot]")
 
     int R2 = g.add_frame(
         1,
-        ConstantRotation{Quaternion::Identity()},
-        FixedAtEpochTranslation{t0}
+        ConstantRotation{EigenBackend::quat_identity()},
+        FixedAtEpochTranslation{t0, 1, g}
     );
 
     // maintenant on bouge le temps
@@ -170,23 +179,21 @@ TEST_CASE("FixedAtEpoch", "[snapshot]")
 // Transform cohérence
 // ============================================================
 
-TEST_CASE("Transform consistency", "[transform]")
+TEST_CASE("Complex chain composition", "[compositon]")
 {
-    FrameGraph g;
+    EigenFrameGraph g;
 
     int f1 = g.add_frame(0,
-        ConstantRotation{Quaternion::Identity()},
+        ConstantRotation{EigenBackend::quat_identity()},
         ConstantTranslation{Vector3(1,0,0)});
 
     int f2 = g.add_frame(0,
-        ConstantRotation{Quaternion::Identity()},
+        ConstantRotation{EigenBackend::quat_identity()},
         ConstantTranslation{Vector3(0,1,0)});
 
-    g.update(0.0);
+    g.update(9.0);
 
-    Transform T = g.transform(f1, f2);
-
-    Vector3 p = T.translation();
+    Vector3 p = g.position(f1, f2);
 
     REQUIRE(isApprox(p, Vector3(-1,1,0)));
 }
