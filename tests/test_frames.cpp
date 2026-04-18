@@ -3,6 +3,8 @@
 
 #include "frames.hpp"
 
+#include <iostream>
+
 using namespace frames;
 using frames::EigenBackend;
 
@@ -30,12 +32,19 @@ TEST_CASE("Root frame is identity", "[basic]")
 {
     EigenFrameGraph g;
 
+    std::cout << "creation" << std::endl;
+
     REQUIRE(g.size() == 1);
 
     g.update(0.0);
 
+    std::cout << "UPDATE" << std::endl;
+
     Quaternion Q = g.attitude(0, 0);
 
+    std::cout << "attitude" << std::endl;
+
+    CAPTURE(Q);
     REQUIRE(isApprox(Q, EigenBackend::quat_identity()));
 }
 
@@ -78,14 +87,23 @@ TEST_CASE("Chain composition", "[composition]")
     int f2 = g.add_frame(f1,
         ConstantRotation{EigenBackend::quat_identity()},
         ConstantTranslation{Vector3(0,1,0)});
+    
+    std::cout << "AAAAAA" << std::endl;
 
     g.update(0.0);
 
+    std::cout << "BBBBBBBBB" << std::endl;
+
     Vector3 p = g.position(f2, 0);
 
+    std::cout << "CCCCCCCCCCC" << std::endl;
+
+    CAPTURE(p);
     REQUIRE(isApprox(p, Vector3(1,1,0)));
 
     g.update(7.0);
+
+    std::cout << "DDDDDDDDDDD" << std::endl;
 
     REQUIRE(isApprox(p, Vector3(1,1,0)));
 }
@@ -195,5 +213,6 @@ TEST_CASE("Complex chain composition", "[compositon]")
 
     Vector3 p = g.position(f1, f2);
 
+    CAPTURE(p);
     REQUIRE(isApprox(p, Vector3(-1,1,0)));
 }

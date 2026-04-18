@@ -91,13 +91,13 @@ private:
     int parent_of_parent;
 
     Quat get_rotation(const FrameGraph<Backend>& fg, double t, int a, int b) const {
-        if (fg.is_updated(t)) {
-            return fg.attitude(b, a);
-        } else {
+        // if (fg.is_updated(t)) {
+        //     return fg.attitude(b, a);
+        // } else {
             Quat Qwa = fg.eval_rotation(epoch, a);
             Quat Qwb = fg.eval_rotation(epoch, b);
             return Backend::compose_rotation(Backend::inverse_rotation(Qwa), Qwb);
-        }
+        // }
     }
 
 public:
@@ -128,23 +128,23 @@ private:
     Vec3 P_pp_n;
 
     Quat get_rotation(const FrameGraph<Backend>& fg, double t, int a, int b) const {
-        if (fg.is_updated(t)) {
-            return fg.attitude(b, a);
-        } else {
+        // if (fg.is_updated(t)) {
+        //     return fg.attitude(b, a);
+        // } else {
             Quat Qwa = fg.eval_rotation(epoch, a);
             Quat Qwb = fg.eval_rotation(epoch, b);
             return Backend::compose_rotation(Backend::inverse_rotation(Qwa), Qwb);
-        }
+        // }
     }
 
     Vec3 get_position(const FrameGraph<Backend>& fg, double t, int a, int b) const {
-        if (fg.is_updated(t)) {
-            return fg.position(a, b);
-        } else {
+        // if (fg.is_updated(t)) {
+        //     return fg.position(a, b);
+        // } else {
             Vec3 BAw = fg.eval_translation(t, a) - fg.eval_translation(t, b);
             Quat Qwb = fg.eval_rotation(t, b);
             return Backend::rotate(Qwb, BAw);
-        }
+        // }
     }
 
 public:
@@ -320,7 +320,14 @@ public:
     template <typename RotationType, typename TranslationType>  
     int add_frame(int p, RotationType&& rotation, TranslationType&& translation) {  
         int id;
-        if (!_free_list.empty() && _free_list. back() > p) {  
+        bool reuse = false;
+        if (!_free_list.empty()) {
+            if(_free_list.back() > p) {
+                reuse = true;
+            }
+        }
+        // std::cout << "reuse : " << reuse << std::endl;
+        if (reuse) {  
             id = _free_list.back();
             _free_list.pop_back();  
             _set_rotation<RotationType>(id, std::move(rotation));  
@@ -330,16 +337,27 @@ public:
             _alive[id] = 1;  
         } else { 
             assert(p < size());
-            id = size();  
+            id = size();
+
+            // std::cout << "id = " << id << "\n";
  
-            _add_rotation<RotationType>(std::move(rotation));  
-            _add_translation<TranslationType>(std::move(translation));  
+            _add_rotation<RotationType>(std::move(rotation)); 
+            // std::cout << "rotation added." << std::endl; 
+            _add_translation<TranslationType>(std::move(translation));
+            // std::cout << "translation added." << std::endl;
             _id.push_back(id);
-            _parent.push_back(p);  
-            _children.emplace_back();    
-            _alive.push_back(1);  
+            // std::cout << "id added = " << _id.back() << std::endl;
+            _parent.push_back(p);
+            // std::cout << "parent added = " << _parent.back() << std::endl;
+            _children.emplace_back();  
+            // std::cout << "children added" << std::endl;  
+            _alive.push_back(1); 
+            // std::cout << "alive added = " << _alive.back() << std::endl;
+
         } 
-        _children[p].push_back(id);
+        if (p >= 0) {
+            _children[p].push_back(id);
+        }
         _clean = false;
         return id;
     }  
@@ -375,20 +393,14 @@ public:
     }  
 
     void update(double t) {  
-        if (is_updated(_last_time) && _clean) {  
+        if (is_updated(t) && _clean) {  
             return;  
         }  
         _last_time = t;  
-        _update(t, 1, _id);  
+        std::cout << "_update" << std::endl;
+        _update(t);
+        std::cout << "_update done" << std::endl;
         _clean = true;  
-    }  
-
-    void update(double t, int id) {
-        if (is_updated(t)) {  
-            return;  
-        }  
-        _update(t, 1, get_ancestors(id)); 
-        _clean = false;
     }
 
     Quaternion eval_rotation(double time, int id) const {
@@ -468,27 +480,43 @@ public:
   
 private:  
   
-    void _update(double t, int begin, const std::vector<int> & list_to_update) {  
-        for (size_t i = begin; i < list_to_update.size(); ++i) { // 0 -> world = Id
-            int id = list_to_update[i];
+    void _update(double t) {
+        for (size_t id = 1; id < size(); ++id) {
             if (_alive[id]) {
                 Quaternion q = _rot_fn[id].eval(t, *this);  
-                Vector3 p = _pos_fn[id].eval(t, *this);  
-    
-                int p_id = _parent[id];  
+                Vector3 p = _pos_fn[id].eval(t, *this);
+
+                int p_id = _parent[id];
+                std::cout << " frame " << id << " (parent = " << p_id << ") --> alive" << std::endl;
+
     
                 // Q_world_i = Q_world_parent * Q_parent_i  
                 _world_rotation[id] = B::compose_rotation(_world_rotation[p_id], q);  
                 // OI_world = OP_world + R_world_parent * PI_parent  
-                _world_position[id] = _world_position[p_id] + B::rotate(_world_rotation[p_id], p);  
+                _world_position[id] = _world_position[p_id] + B::rotate(_world_rotation[p_id], p);
+                std::cout << "PIp\n";
+                std::cout << p;
+                std::cout << "\nOPw\n";
+                std::cout << _world_position[p_id];
+                std::cout << "\nQwp\n";
+                std::cout << _world_rotation[p_id];
+                std::cout << " --> OIw\n";
+                std::cout << _world_position[id];
+                std::cout << "\n---------------------------------\n";
+            }
+            else {
+                std::cout << id << "/" << size() << " --> not alive" << std::endl;
+
             }
         }
     }  
       
     int _add_root() {  
-        int id = size();  
-        _add_rotation(BConstantRotation<Backend>{B::quat_identity()});  
-        _add_translation(BConstantTranslation<Backend>{B::vec_zero()});  
+        int id = size();
+        // std::cout << "root id = " << id << std::endl;
+        _children.emplace_back();
+        add_frame(-1, BConstantRotation<Backend>{B::quat_identity()}, BConstantTranslation<Backend>{B::vec_zero()});
+        // std::cout << "root added." << std::endl;
         return id;  
     }  
   
@@ -544,7 +572,7 @@ private:
     std::vector<std::vector<int>> _children;
     std::vector<Interface<Quaternion>> _rot_fn;  
     std::vector<Interface<Vector3>> _pos_fn;
-    std::vector<uint8_t> _alive; // 1 = alive, 0 = dead  
+    std::vector<int> _alive; // 1 = alive, 0 = dead  
     std::vector<int> _free_list; // recycled ids    
   
     double _last_time = std::numeric_limits<double>::quiet_NaN();  
