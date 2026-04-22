@@ -83,35 +83,23 @@ using Vec3 = typename Backend::Vector3;
 
 template <typename Backend>
 class BFixedAtEpochRotation {
-private:
+public:
     using Quat = typename Backend::Quaternion;
     double epoch;
-    Quat Q_pp_n;
+    Quat Qwi;
     int parent;
-    int parent_of_parent;
-
-    Quat get_rotation(const FrameGraph<Backend>& fg, double t, int a, int b) const {
-        // if (fg.is_updated(t)) {
-        //     return fg.attitude(b, a);
-        // } else {
-            Quat Qwa = fg.eval_rotation(epoch, a);
-            Quat Qwb = fg.eval_rotation(epoch, b);
-            return Backend::compose_rotation(Backend::inverse_rotation(Qwa), Qwb);
-        // }
-    }
 
 public:
     BFixedAtEpochRotation() = delete;
     BFixedAtEpochRotation(double epoch_, int parent_, const FrameGraph<Backend>& fg) : 
         epoch(epoch_),
         parent(parent_) {
-        parent_of_parent = fg.get_parent(parent);
-        Q_pp_n = get_rotation(fg, epoch, parent_of_parent, parent);
+        Qwi = fg.eval_rotation(epoch, parent);
     }
 
     Quat operator()(double t, const FrameGraph<Backend>& fg) const {
-        Quat Q_p_pp = get_rotation(fg, t, parent, parent_of_parent);
-        return Backend::compose_rotation(Q_p_pp, Q_pp_n);
+        Quat Qpw = Backend::inverse_rotation(fg.get_rotation(t, parent));
+        return Backend::compose_rotation(Qpw, Qwi);
     }
 };
 
@@ -124,44 +112,22 @@ private:
 
     double epoch;
     int parent;
-    int parent_of_parent;
-    Vec3 P_pp_n;
-
-    Quat get_rotation(const FrameGraph<Backend>& fg, double t, int a, int b) const {
-        // if (fg.is_updated(t)) {
-        //     return fg.attitude(b, a);
-        // } else {
-            Quat Qwa = fg.eval_rotation(epoch, a);
-            Quat Qwb = fg.eval_rotation(epoch, b);
-            return Backend::compose_rotation(Backend::inverse_rotation(Qwa), Qwb);
-        // }
-    }
-
-    Vec3 get_position(const FrameGraph<Backend>& fg, double t, int a, int b) const {
-        // if (fg.is_updated(t)) {
-        //     return fg.position(a, b);
-        // } else {
-            Vec3 BAw = fg.eval_translation(t, a) - fg.eval_translation(t, b);
-            Quat Qwb = fg.eval_rotation(t, b);
-            return Backend::rotate(Qwb, BAw);
-        // }
-    }
+    Vec3 Pos; // OIw
 
 public:
     BFixedAtEpochTranslation() = delete;
     BFixedAtEpochTranslation(double epoch_, int parent_, const FrameGraph<Backend>& fg) : 
         epoch(epoch_),
         parent(parent_) {
-        parent_of_parent = fg.get_parent(parent);
-        P_pp_n = get_position(fg, epoch, parent, parent_of_parent);
+        Pos = fg.eval_translation(epoch, parent); // OIw = OPw(epoch)
     }
 
     Vec3 operator()(double t, const FrameGraph<Backend>& fg) const {
 
-        Quat Q_p_pp = get_rotation(fg, t, parent, parent_of_parent);
-        Vec3 P_p_pp = get_position(fg, t, parent, parent_of_parent);
-
-        return P_p_pp + Backend::rotate(Q_p_pp, P_pp_n);
+        Quat Qwp = fg.get_rotation(t, parent);
+        Vec3 OPw = fg.get_position(t, parent);
+        // PIp = Qwp * (OIw - OPw)
+        return Backend::rotate(Qwp, Pos - OPw);
     }
 
 };
@@ -204,7 +170,7 @@ public:
         const std::vector<T> & value_  
     ) :   
         _data(SampledData(t_, value_)) {  
-        _search = std::make_unique<interpolation::CachedInterval>(  
+        _search = std::make_unique<interpolation::LinearCachedIntervalSearch>(  
             std::make_shared<const std::vector<double>>(_data.t)  
         );  
     }  
@@ -397,9 +363,7 @@ public:
             return;  
         }  
         _last_time = t;  
-        std::cout << "_update" << std::endl;
         _update(t);
-        std::cout << "_update done" << std::endl;
         _clean = true;  
     }
 
@@ -421,6 +385,24 @@ public:
         }
     }
   
+    Quaternion get_rotation(double t, int a) const {
+        // return Qwa
+        if (is_updated(t)) {
+            return attitude(a, 0);
+        } else {
+            return eval_rotation(t, a);
+        }
+    }
+
+    Vector3 get_position(double t, int a) const {
+        // return OAw
+        if (is_updated(t)) {
+            return position(a, 0);
+        } else {
+            return eval_translation(t, a);
+        }
+    }
+
     Vector3 position(int a, int b) const {   
         // Tba = T_b_world T_world_a  
         const Vector3 & OAw (_world_position[a]);  
@@ -487,25 +469,25 @@ private:
                 Vector3 p = _pos_fn[id].eval(t, *this);
 
                 int p_id = _parent[id];
-                std::cout << " frame " << id << " (parent = " << p_id << ") --> alive" << std::endl;
+                // std::cout << " frame " << id << " (parent = " << p_id << ") --> alive" << std::endl;
 
     
                 // Q_world_i = Q_world_parent * Q_parent_i  
                 _world_rotation[id] = B::compose_rotation(_world_rotation[p_id], q);  
                 // OI_world = OP_world + R_world_parent * PI_parent  
                 _world_position[id] = _world_position[p_id] + B::rotate(_world_rotation[p_id], p);
-                std::cout << "PIp\n";
-                std::cout << p;
-                std::cout << "\nOPw\n";
-                std::cout << _world_position[p_id];
-                std::cout << "\nQwp\n";
-                std::cout << _world_rotation[p_id];
-                std::cout << " --> OIw\n";
-                std::cout << _world_position[id];
-                std::cout << "\n---------------------------------\n";
+                // std::cout << "PIp\n";
+                // std::cout << p;
+                // std::cout << "\nOPw\n";
+                // std::cout << _world_position[p_id];
+                // std::cout << "\nQwp\n";
+                // std::cout << _world_rotation[p_id];
+                // std::cout << " --> OIw\n";
+                // std::cout << _world_position[id];
+                // std::cout << "\n---------------------------------\n";
             }
             else {
-                std::cout << id << "/" << size() << " --> not alive" << std::endl;
+                // std::cout << id << "/" << size() << " --> not alive" << std::endl;
 
             }
         }

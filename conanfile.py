@@ -31,7 +31,7 @@ class FramesConan(ConanFile):
             self.version = version.group(1)
 
     def requirements(self):
-        self.requires("interpolation/0.1.0")
+        self.requires("interpolation/0.2.0")
         if self.options.with_eigen:
             self.requires("eigen/[^3.4.0]")
 
