@@ -1,0 +1,24 @@
+## Doxyfile for frames
+## Run: doxygen Doxyfile
+
+PROJECT_NAME           = "frames"
+PROJECT_NUMBER         = "0.1.0"
+PROJECT_BRIEF          = "Header-only C++ reference frame management library"
+OUTPUT_DIRECTORY       = doxygen
+GENERATE_HTML          = NO
+GENERATE_LATEX         = NO
+GENERATE_XML           = YES
+XML_OUTPUT             = xml
+INPUT                  = include/frames.hpp
+RECURSIVE              = NO
+FILE_PATTERNS          = *.hpp
+EXTRACT_ALL            = YES
+EXTRACT_PRIVATE        = NO
+EXTRACT_STATIC         = YES
+QUIET                  = YES
+WARNINGS               = YES
+WARN_IF_UNDOCUMENTED   = YES
+ENABLE_PREPROCESSING   = YES
+MACRO_EXPANSION        = YES
+EXPAND_ONLY_PREDEF     = NO
+PREDEFINED             = FRAMES_WITH_EIGEN DOXYGEN_RUNNING
