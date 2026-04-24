@@ -875,7 +875,17 @@ private:
 // ============================================================  
   
 #ifdef FRAMES_WITH_EIGEN  
-  
+
+/**
+ * @brief The Eigen backend for the FrameGraph.
+ * 
+ * This backend uses the Eigen library for vector and quaternion operations.
+ * It defines the necessary types and operations for rotations and translations,
+ * including composition, inversion, and interpolation. The EigenBackend
+ * provides a convenient way to use the FrameGraph with Eigen's powerful
+ * mathematical capabilities.
+ * 
+ */
 struct EigenBackend {  
     using Vector3 = Eigen::Vector3d;  
     using Quaternion = Eigen::Quaterniond;  
@@ -903,8 +913,8 @@ struct EigenBackend {
 };  
   
 using EigenFrameGraph = FrameGraph<EigenBackend>;  
-  
-typedef BConstantRotation<EigenBackend> ConstantRotation;  
+
+typedef BConstantRotation<EigenBackend> ConstantRotation; 
 typedef BFixedAtEpochRotation<EigenBackend> FixedAtEpochRotation;  
 typedef BSampledRotation<EigenBackend> SampledRotation;  
   
@@ -916,16 +926,32 @@ using Matrix3 = Eigen::Matrix3d;
 using Vector3 = Eigen::Vector3d;  
 using Quaternion = Eigen::Quaterniond;  
   
-// Axes  
-enum class Axis {X, Y, Z};  
+// Axes 
+/** @brief Enum class for representing the three principal axes. */
+enum class Axis {
+    /** @brief The X-axis. */
+    X,
+    /** @brief The Y-axis. */
+    Y,
+    /** @brief The Z-axis. */
+    Z};  
   
-// Tags  
+// Tags 
+/** @brief Tag for intrinsic rotations. */
 struct Intrinsic {};  
+/** @brief Tag for extrinsic rotations. */
 struct Extrinsic {};  
-  
+
+/**
+ * @brief Generates a rotation matrix for a given axis and angle.
+ * @tparam A The rotation axis.
+ */
 template <Axis A>  
 inline Matrix3 rot(double a);  
-  
+
+/**
+ * @brief Specialization of the rotation function for the X-axis.
+ */
 template <>  
 inline Matrix3 rot<Axis::X>(double a)  
 {  
@@ -936,7 +962,10 @@ inline Matrix3 rot<Axis::X>(double a)
         0, s, c;  
     return R;  
 }  
-  
+
+/**
+ * @brief Specialization of the rotation function for the Y-axis.
+ */
 template <>  
 inline Matrix3 rot<Axis::Y>(double a)  
 {  
@@ -948,6 +977,9 @@ inline Matrix3 rot<Axis::Y>(double a)
     return R;  
 }  
   
+/**
+ * @brief Specialization of the rotation function for the Z-axis.
+ */
 template <>  
 inline Matrix3 rot<Axis::Z>(double a)  
 {  
@@ -962,7 +994,18 @@ inline Matrix3 rot<Axis::Z>(double a)
 // ============================================================  
 // Euler → Quaternion (24 conventions)  
 // ============================================================  
-  
+
+/**
+ * @brief Converts Euler angles to a quaternion.
+ * @tparam A1 The first rotation axis.
+ * @tparam A2 The second rotation axis.
+ * @tparam A3 The third rotation axis.
+ * @tparam Mode The rotation mode (intrinsic or extrinsic).
+ * @param a1 The angle for the first axis.
+ * @param a2 The angle for the second axis.
+ * @param a3 The angle for the third axis.
+ * @return The resulting quaternion.
+ */
 template <Axis A1, Axis A2, Axis A3, typename Mode>  
 inline Quaternion eulerToQuaternion(double a1, double a2, double a3)  
 {  
