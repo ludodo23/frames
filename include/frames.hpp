@@ -8,7 +8,12 @@
  * ludovic.andrieux23@gmail.com  
  *  
  * This software is a header-only C++ frames conversion library provided as a  
- * single header file. [TODO].  
+ * single header file. It provides a frame graph data structure to represent a
+ * hierarchy of frames, and supports various strategies for defining the 
+ * rotation and translation of each frame. The library is designed to be
+ * flexible and extensible, allowing users to define custom strategies for
+ * frame transformations. It also includes an Eigen backend for efficient
+ * mathematical operations.
  *  
  * This software is governed by the CeCILL-C license under French law and  
  * abiding by the rules of distribution of free software. You can use,  
@@ -51,7 +56,10 @@
 #include <interpolation.hpp>  
   
 #define FRAMES_VERSION "0.1.0"  
-  
+
+/**  
+ * @brief The main namespace for the frames library.  
+ */
 namespace frames  
 {  
   
@@ -62,66 +70,143 @@ namespace frames
 // Forward  
 template <typename Backend>  
 class FrameGraph;  
-  
+
+/**  
+ * @brief A strategy for constant rotation.
+ * 
+ * @tparam Backend The backend type that defines the Quaternion type and related operations.
+ */
 template <typename Backend>  
 struct BConstantRotation { 
 using Quat = typename Backend::Quaternion; 
-    Quat value;  
+    /**
+     * @brief The constant rotation value.
+     */
+    Quat value; 
+    /**
+     * @brief Evaluates the rotation at a given time.
+     * @param t The time at which to evaluate the rotation.
+     * @param fg The frame graph.
+     * @return The constant rotation value.
+     */
     Quat operator()(double t, const FrameGraph<Backend> &fg) const {  
         return value;  
     }  
 };  
 
+/**
+ * @brief A strategy for constant translation.
+ * 
+ * @tparam Backend The backend type that defines the Vector3 type and related operations.
+ */
 template <typename Backend>  
 struct BConstantTranslation { 
-using Vec3 = typename Backend::Vector3; 
-    Vec3 value;  
+using Vec3 = typename Backend::Vector3;
+    /**
+     * @brief The constant translation value.
+     */
+    Vec3 value;
+    /**
+     * @brief Evaluates the translation at a given time.
+     * @param t The time at which to evaluate the translation.
+     * @param fg The frame graph.
+     * @return The constant translation value.
+     */
     Vec3 operator()(double t, const FrameGraph<Backend> &fg) const {  
         return value;  
     }  
 };  
 
+/**
+ * @brief A strategy for fixed rotation at a specific epoch.
+ * @tparam Backend The backend type that defines the Quaternion type and related operations.
+ */
 template <typename Backend>
 class BFixedAtEpochRotation {
 public:
     using Quat = typename Backend::Quaternion;
+    /**
+     * @brief The epoch at which the rotation is fixed.
+     */
     double epoch;
+    /**
+     * @brief The fixed rotation at the specified epoch.
+     */
     Quat Qwi;
+    /**
+     * @brief The parent frame index.
+     */
     int parent;
 
 public:
     BFixedAtEpochRotation() = delete;
+    /**
+     * @brief Constructs a BFixedAtEpochRotation strategy.
+     * @param epoch_ The epoch at which the rotation is fixed.
+     * @param parent_ The parent frame index.
+     * @param fg The frame graph to evaluate the rotation at the specified epoch.
+     */
     BFixedAtEpochRotation(double epoch_, int parent_, const FrameGraph<Backend>& fg) : 
         epoch(epoch_),
         parent(parent_) {
         Qwi = fg.eval_rotation(epoch, parent);
     }
 
+    /**
+     * @brief Evaluates the rotation at a given time.
+     * @param t The time at which to evaluate the rotation.
+     * @param fg The frame graph.
+     * @return The interpolated rotation value.
+     */
     Quat operator()(double t, const FrameGraph<Backend>& fg) const {
         Quat Qpw = Backend::inverse_rotation(fg.get_rotation(t, parent));
         return Backend::compose_rotation(Qpw, Qwi);
     }
 };
 
-
+/**
+ * @brief A strategy for fixed translation at a specific epoch.
+ * @tparam Backend The backend type that defines the Vector3 and Quaternion types and related operations
+ */
 template <typename Backend>
 class BFixedAtEpochTranslation {
 private:
     using Vec3 = typename Backend::Vector3;
     using Quat = typename Backend::Quaternion;
 
+    /**
+     * @brief The epoch at which the translation is fixed.
+     */
     double epoch;
-    int parent;
+    /**
+     * @brief The fixed translation at the specified epoch.
+     */
     Vec3 Pos; // OIw
+    /**
+     * @brief The parent frame index.
+     */
+    int parent;
 
 public:
     BFixedAtEpochTranslation() = delete;
+    /**
+     * @brief Constructs a BFixedAtEpochTranslation strategy.
+     * @param epoch_ The epoch at which the translation is fixed.
+     * @param parent_ The parent frame index.
+     * @param fg The frame graph to evaluate the translation at the specified epoch.
+     */
     BFixedAtEpochTranslation(double epoch_, int parent_, const FrameGraph<Backend>& fg) : 
         epoch(epoch_),
         parent(parent_) {
         Pos = fg.eval_translation(epoch, parent); // OIw = OPw(epoch)
     }
 
+    /**
+     * @brief Evaluates the translation at a given time.
+     * @param t The time at which to evaluate the translation.
+     * @param fg The frame graph.
+     * @return The interpolated translation value.
+     */
     Vec3 operator()(double t, const FrameGraph<Backend>& fg) const {
 
         Quat Qwp = fg.get_rotation(t, parent);
@@ -135,21 +220,40 @@ public:
 // ============================================================
 // Sampled strategies
 // ============================================================
+
+/**
+ * @brief A structure to hold sampled data.
+ * @tparam T The type of the sampled data.
+ */
 template <typename T>  
-struct SampledData {  
+struct SampledData { 
+    /** @brief The time points. */
     std::vector<double> t;  
+    /** @brief The sampled values. */
     std::vector<T> value;  
+    /** @brief The derivatives at the time points. */
     std::vector<T> derivative;  
   
 private:  
     SampledData() = delete;  
   
-public:  
+public:
+    /** 
+     * @brief Constructs a SampledData structure with time points and values.
+     * @param t_ The time points.
+     * @param value_ The sampled values at the time points.
+     */
     SampledData(  
         const std::vector<double> & t_,  
         const std::vector<T> & value_  
     ) : SampledData(t_, value_, {}) {}  
   
+    /** 
+     * @brief Constructs a SampledData structure with time points, values, and derivatives.
+     * @param t_ The time points.
+     * @param value_ The sampled values at the time points.
+     * @param derivative_ The derivatives at the time points.
+     */
     SampledData(  
         const std::vector<double> & t_,  
         const std::vector<T> & value_,  
@@ -157,14 +261,25 @@ public:
     ) : t(t_), value(value_), derivative(derivative_) {}  
   
 };  
-  
+
+/** 
+ * @brief A strategy for sampled rotation.
+ * @tparam Backend The backend type that defines the Quaternion type and related operations.
+ */
 template <typename Backend>  
 struct BSampledRotation {  
 private:  
     using T = typename Backend::Quaternion;  
+    /** @brief The sampled data for rotation. */
     SampledData<T> _data;  
+    /** @brief The interval search object for finding the appropriate time interval. */
     std::unique_ptr<interpolation::IntervalSearch> _search;  
-public:  
+public:
+    /** 
+     * @brief Constructs a BSampledRotation strategy with time points and values.
+     * @param t_ The time points.
+     * @param value_ The sampled rotation values at the time points.
+     */
     BSampledRotation(  
         const std::vector<double> & t_,  
         const std::vector<T> & value_  
@@ -175,21 +290,41 @@ public:
         );  
     }  
   
+    /** 
+     * @brief Evaluates the rotation at a given time.
+     * @param time The time at which to evaluate the rotation.
+     * @param fg The frame graph.
+     * @return The interpolated rotation value.
+     */
     T operator()(double time, const FrameGraph<Backend> &fg) const {  
         int i = _search->find(time);  
         double alpha = (time - _data.t[i]) / (_data.t[i+1] - _data.t[i]);  
         return Backend::slerp(_data.value[i], _data.value[i + 1], alpha);  
     }  
 };  
-  
+
+/** 
+ * @brief A strategy for sampled translation.
+ * @tparam Backend The backend type that defines the Vector3 type and related operations.
+ */
 template <typename Backend>  
 struct BSampledTranslation {  
 private:  
-    using T = typename Backend::Vector3;  
+    using T = typename Backend::Vector3;
+    /** @brief The sampled data for translation. */
     SampledData<T> _data;  
+    /** @brief The interpolator for evaluating the translation at a given time. */
     std::unique_ptr<interpolation::Interpolator<T>> _interp;  
   
 public:  
+    /** 
+    * @brief Constructs a BSampledTranslation strategy with time points and values.
+    * 
+    * A CatmullRomInterpolator is used, which provides a smooth interpolation.
+    * 
+    * @param t_ The time points.
+    * @param value_ The sampled translation values at the time points.
+    */
     BSampledTranslation(  
         const std::vector<double> & t_,  
         const std::vector<T> & value_  
@@ -200,6 +335,16 @@ public:
         );  
     }  
   
+    /** 
+     * @brief Constructs a BSampledTranslation strategy with time points, values, and derivatives.
+     * 
+     * A CubicHermiteInterpolator is used, allowing for smoother interpolation
+     * that takes into account the rate of change at the sampled points.
+     * 
+     * @param t_ The time points.
+     * @param value_ The sampled translation values at the time points.
+     * @param derivative_ The derivatives at the time points.
+     */
     BSampledTranslation(  
         const std::vector<double> & t_,  
         const std::vector<T> & value_,  
@@ -210,7 +355,13 @@ public:
             std::make_shared<const std::vector<T>>(_data.value),  
             std::make_shared<const std::vector<T>>(_data.derivative)  
         );  
-    }  
+    } 
+    /** 
+     * @brief Evaluates the translation at a given time.
+     * @param time The time at which to evaluate the translation.
+     * @param fg The frame graph.
+     * @return The interpolated translation value.
+     */
     T operator()(double time, const FrameGraph<Backend> &fg) const {  
         return _interp->eval(time);  
     }  
@@ -220,7 +371,13 @@ public:
 // ============================================================  
 // FrameGraph  
 // ============================================================  
-  
+/** 
+ * @brief A graph of frames with time-dependent transformations.
+ * 
+ * The FrameGraph class represents a hierarchy of frames, where each frame can have a parent and multiple children. Each frame's rotation and translation can be defined by various strategies, allowing for flexible and dynamic transformations over time. The class provides methods to add and remove frames, retrieve ancestors and children, and evaluate the position and attitude of frames at specific time points.
+ * 
+ * @tparam Backend The backend type that defines the Vector3 and Quaternion types and related operations.
+ */
 template <typename Backend>  
 class FrameGraph {  
     using B = Backend;  
@@ -276,13 +433,26 @@ public:
     using Vector3 = typename B::Vector3;  
     using Quaternion = typename B::Quaternion;  
   
+    /** 
+     * @brief Constructs a new frame graph.
+     */
     FrameGraph() :  
         _clean(true) {  
         _add_root();   
     }  
   
+    /** 
+     * @brief Destroys the frame graph.
+     */
     virtual ~FrameGraph() = default;  
   
+    /** 
+     * @brief Adds a new frame to the graph.
+     * @param p The parent frame id.
+     * @param rotation The rotation strategy for the frame.
+     * @param translation The translation strategy for the frame.
+     * @return The id of the newly added frame.
+     */
     template <typename RotationType, typename TranslationType>  
     int add_frame(int p, RotationType&& rotation, TranslationType&& translation) {  
         int id;
@@ -328,17 +498,35 @@ public:
         return id;
     }  
 
+    /** 
+     * @brief Gets the parent frame id.
+     * @param id The frame id.
+     * @return The parent frame id.
+     */
     int get_parent(int id) const {
         return _parent[id];
     }
 
+    /** 
+     * @brief Removes a frame from the graph.
+     * @param id The frame id of the frame to remove.
+     */
     void remove_frame(int id) {
         _remove_subtree(id);
     }
-    // ----------------------------------------------------  
-    // ANCESTORS (O(h))  
-    // includes root (0)  
-    // ----------------------------------------------------  
+    /** 
+     * @brief Gets the ancestors of a frame.
+     * 
+     * This method returns a vector containing the ids of the ancestors of
+     * the specified frame, starting from the root (id 0) down to the frame
+     * itself. The ancestors are ordered from the root to the frame,
+     * allowing for easy traversal of the hierarchy. The method operates 
+     * in O(h) time complexity, where h is the height of the tree from
+     * the specified frame to the root.
+     * 
+     * @param id The frame id.
+     * @return A vector containing the ids of the ancestors.
+     */
     std::vector<int> get_ancestors(int id) const {  
         std::vector<int> ancestors;  
 
@@ -351,13 +539,29 @@ public:
         return ancestors;  
     }  
   
-    // ----------------------------------------------------  
-    // CHILDREN (O(1))  
-    // ----------------------------------------------------  
+    /**
+     * @brief Gets the children of a frame.
+     * @param id The frame id.
+     * @return A reference to the vector of child frame ids.
+     */
     const std::vector<int>& get_children(int id) const {  
         return _children[id];  
     }  
 
+    /** 
+     * @brief Updates the frame graph.
+     * 
+     * This method updates the frame graph at a given time. If the graph is 
+     * already updated at the specified time and is clean, it will return 
+     * immediately without performing any updates. Otherwise, it will compute
+     * the new world rotations and positions for all alive frames based on
+     * their respective rotation and translation strategies. After updating,
+     * it marks the graph as clean, indicating that it is entirely up-to-date
+     * with the given time. The method operates in O(n) time complexity, where 
+     * n is the number of frames in the graph.
+     * 
+     * @param t The time at which to update.
+     */
     void update(double t) {  
         if (is_updated(t) && _clean) {  
             return;  
@@ -367,6 +571,22 @@ public:
         _clean = true;  
     }
 
+    /** 
+     * @brief Evaluates the rotation of a frame at a given time.
+     * 
+     * This method computes the rotation of a frame at a specified time by
+     * recursively composing the rotations of its ancestors.
+     * It is important to note that this method does not perform any caching,
+     * so it may be inefficient if called multiple times for the same time
+     * and frame. For optimal performance, it is recommended to call the
+     * `update` method before evaluating rotations, which will cache the
+     * results and allow for O(1) retrieval of rotations using the
+     * `get_rotation` or `attitude`methods.
+     * 
+     * @param time The time at which to evaluate.
+     * @param id The frame id of the frame for which to evaluate the rotation.
+     * @return The rotation quaternion.
+     */
     Quaternion eval_rotation(double time, int id) const {
         if (id == 0) {
             return B::quat_identity();
@@ -375,6 +595,22 @@ public:
         }
     }
 
+    /** 
+     * @brief Evaluates the translation of a frame at a given time.
+     * 
+     * This method computes the translation of a frame at a specified time by
+     * recursively composing the translations of its ancestors.
+     * It is important to note that this method does not perform any caching,
+     * so it may be inefficient if called multiple times for the same time
+     * and frame. For optimal performance, it is recommended to call the
+     * `update` method before evaluating translations, which will cache the
+     * results and allow for O(1) retrieval of translations using the
+     * `get_position` or `position` methods.
+     * 
+     * @param time The time at which to evaluate.
+     * @param id The frame id of the frame for which to evaluate the translation.
+     * @return The translation vector.
+     */
     Vector3 eval_translation(double time, int id) const {
         if (id == 0) {
             return B::vec_zero();
@@ -385,6 +621,17 @@ public:
         }
     }
   
+    /** 
+     * @brief Gets the rotation of a frame at a given time.
+     * 
+     * This method retrieves the rotation of a frame at a specified time from the cache
+     * if the graph is updated at that time. Otherwise, it evaluates the rotation
+     * using the `eval_rotation` method.
+     * 
+     * @param t The time at which to get the rotation.
+     * @param a The frame id of the frame for which to get the rotation.
+     * @return The rotation quaternion.
+     */
     Quaternion get_rotation(double t, int a) const {
         // return Qwa
         if (is_updated(t)) {
@@ -394,6 +641,17 @@ public:
         }
     }
 
+    /** 
+     * @brief Gets the translation of a frame at a given time.
+     * 
+     * This method retrieves the translation of a frame at a specified time from the cache
+     * if the graph is updated at that time. Otherwise, it evaluates the translation
+     * using the `eval_translation` method.
+     * 
+     * @param t The time at which to get the translation.
+     * @param a The frame id of the frame for which to get the translation.
+     * @return The translation vector.
+     */
     Vector3 get_position(double t, int a) const {
         // return OAw
         if (is_updated(t)) {
@@ -403,6 +661,16 @@ public:
         }
     }
 
+    /**
+     * @brief get position of frame a w.r.t frame b.
+     * 
+     * The FrameGraph should be updated at the time of interest before calling
+     * this method to ensure that the world positions and rotations are up-to-date.
+     * 
+     * @param a frame id to get the position.
+     * @param b frame id w.r.t. get the position.
+     * @return position vector of frame a in frame b.
+     */
     Vector3 position(int a, int b) const {   
         // Tba = T_b_world T_world_a  
         const Vector3 & OAw (_world_position[a]);  
@@ -414,11 +682,17 @@ public:
         );  
     }  
   
-    /// @brief get position of frame a w.r.t frame b, eventually projected in frame c.  
-    /// @param a frame id to get the position.  
-    /// @param b frame id w.r.t. get the position  
-    /// @param c frame id for projection. with -1, b is used instead.  
-    /// @return position of frame a in frame b (projected on frame c).  
+    /**
+     * @brief get position of frame a w.r.t frame b projected in frame c.
+     * 
+     * The FrameGraph should be updated at the time of interest before calling
+     * this method to ensure that the world positions and rotations are up-to-date.
+     *  
+     * @param a frame id to get the position.  
+     * @param b frame id w.r.t. get the position  
+     * @param c frame id for projection.  
+     * @return position of frame a in frame b projected on frame c.  
+     */
     Vector3 position(int a, int b, int c) const {    
         const Quaternion & Qwb (_world_rotation[b]);  
         const Quaternion & Qwc (_world_rotation[c]);  
@@ -434,10 +708,16 @@ public:
         );  
     }  
   
-    /// @brief get attitude of frame a w.r.t. frame b.  
-    /// @param a frame to get the attitude.  
-    /// @param b frame w.r.t. get the attitute.  
-    /// @return attitude quaternion of a w.r.t. b.  
+    /**
+     * @brief get attitude of frame a w.r.t. frame b. 
+     * 
+     * The FrameGraph should be updated at the time of interest before calling
+     * this method to ensure that the world rotations are up-to-date.
+     * 
+     * @param a frame to get the attitude.  
+     * @param b frame w.r.t. get the attitute.  
+     * @return attitude quaternion of a w.r.t. b.  
+     */
     Quaternion attitude(int a, int b) const {  
         // Tba = T_b_world T_world_a  
         const Quaternion & Qwa (_world_rotation[a]);  
@@ -448,14 +728,28 @@ public:
         );  
     }  
   
+    /**
+     * @brief get the size of the frame graph.
+     * @return the number of frames in the graph.
+     */
     int size() const {  
         return (int)_world_rotation.size();  
     }  
 
+    /**
+     * @brief check if a frame is alive (not removed).
+     * @param id frame id to check.
+     * @return true if the frame is alive, false otherwise.
+     */
     bool is_alive(int id) const {  
         return _alive[id];  
     }
 
+    /**
+     * @brief check if the frame graph is updated at a given time.
+     * @param time the time at which to check.
+     * @return true if the frame graph is updated at the given time, false otherwise.
+     */
     bool is_updated(double time) const {
         return time == _last_time;
     }
@@ -547,17 +841,31 @@ private:
         }  
     }  
   
+    /** @brief World rotations of the frames. */
     std::vector<Quaternion> _world_rotation; 
+    /** @brief World positions of the frames. */
     std::vector<Vector3> _world_position;
+    /** @brief IDs of the frames. */
     std::vector<int> _id;
+    /** @brief Parent IDs of the frames. */
     std::vector<int> _parent;
+    /** @brief Child IDs of the frames. */
     std::vector<std::vector<int>> _children;
+    /** @brief Rotation functions for the frames. */
     std::vector<Interface<Quaternion>> _rot_fn;  
+    /** @brief Translation functions for the frames. */
     std::vector<Interface<Vector3>> _pos_fn;
+    /** @brief Alive status of the frames. */
     std::vector<int> _alive; // 1 = alive, 0 = dead  
+    /** @brief List of free IDs for recycling. */
     std::vector<int> _free_list; // recycled ids    
   
+    /** @brief Last update time. */
     double _last_time = std::numeric_limits<double>::quiet_NaN();  
+    /**
+     * @brief Clean flag.
+     * @details a frame add results in a clean flag being set to false.
+     */
     bool _clean;  
             
 };  
