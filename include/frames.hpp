@@ -510,6 +510,7 @@ public:
     /** 
      * @brief Removes a frame from the graph.
      * @param id The frame id of the frame to remove.
+     * @return A vector containing the deleted frames ids.
      */
     std::vector<int> remove_frame(int id) {
         return _remove_subtree(id);
