@@ -511,8 +511,8 @@ public:
      * @brief Removes a frame from the graph.
      * @param id The frame id of the frame to remove.
      */
-    void remove_frame(int id) {
-        _remove_subtree(id);
+    std::vector<int> remove_frame(int id) {
+        return _remove_subtree(id);
     }
     /** 
      * @brief Gets the ancestors of a frame.
@@ -821,26 +821,30 @@ private:
     // ----------------------------------------------------  
     // REMOVE SUBTREE (iterative DFS, O(k))  
     // ----------------------------------------------------  
-    void _remove_subtree(int root) {  
-        std::vector<int> stack;  
-        stack.push_back(root);  
+    std::vector<int> _remove_subtree(int root) {  
+    std::vector<int> removed_ids;  
+    std::vector<int> stack;  
+    stack.push_back(root);  
 
-        while (!stack.empty()) {  
-            int node = stack.back();  
-            stack.pop_back();  
+    while (!stack.empty()) {  
+        int node = stack.back();  
+        stack.pop_back();  
 
-            if (!_alive[node]) continue;  
+        if (!_alive[node]) continue;  
 
-            _alive[node] = 0;  
-            _free_list.push_back(node);  
+        _alive[node] = 0;  
+        _free_list.push_back(node);  
+        removed_ids.push_back(node);  
 
-            for (int child : _children[node]) {  
-                stack.push_back(child);  
-            }  
-            _children[node].clear();  
+        for (int child : _children[node]) {  
+            stack.push_back(child);  
         }  
+
+        _children[node].clear();  
     }  
-  
+
+    return removed_ids;  
+}
     /** @brief World rotations of the frames. */
     std::vector<Quaternion> _world_rotation; 
     /** @brief World positions of the frames. */
