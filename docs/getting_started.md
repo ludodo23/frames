@@ -84,6 +84,8 @@ int body = fg.add_frame(
 For a frame whose position evolves over time, provide sampled data. `frames.hpp` uses `interpolation.hpp` internally:
 
 ```cpp
+double epoch = 10.0  // meaning the time 0 in sampled data corresponds to 10 in frame global time.
+
 std::vector<double> times = {0.0, 1.0, 2.0, 3.0};
 
 // Sampled translation — uses CatmullRom interpolation automatically
@@ -104,8 +106,8 @@ std::vector<Quaternion> rotations = {
 
 int satellite = fg.add_frame(
     0,                                      // parent: world
-    SampledRotation(times, rotations),
-    SampledTranslation(times, positions)
+    SampledRotation(times, rotations, epoch),
+    SampledTranslation(times, positions, epoch)
 );
 ```
 
