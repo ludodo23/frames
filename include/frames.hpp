@@ -233,6 +233,8 @@ struct SampledData {
     std::vector<T> value;  
     /** @brief The derivatives at the time points. */
     std::vector<T> derivative;  
+    /** @brief Reference time of the sampled data, representing the origin of the time axis in another time scale. */
+    double _epoch;
   
 private:  
     SampledData() = delete;  
@@ -242,23 +244,28 @@ public:
      * @brief Constructs a SampledData structure with time points and values.
      * @param t_ The time points.
      * @param value_ The sampled values at the time points.
+     * @param epoch Reference time of the sampled data, representing the origin of the time axis in another time scale, default is 0.0.
      */
     SampledData(  
         const std::vector<double> & t_,  
-        const std::vector<T> & value_  
-    ) : SampledData(t_, value_, {}) {}  
+        const std::vector<T> & value_,
+        const double & epoch = 0.0
+    ) : SampledData(t_, value_, {}, epoch) {}  
   
     /** 
      * @brief Constructs a SampledData structure with time points, values, and derivatives.
      * @param t_ The time points.
      * @param value_ The sampled values at the time points.
      * @param derivative_ The derivatives at the time points.
+     * @param epoch Reference time of the sampled data, representing the origin of the time axis in another time scale, default is 0.0.
      */
     SampledData(  
         const std::vector<double> & t_,  
         const std::vector<T> & value_,  
-        const std::vector<T> & derivative_  
-    ) : t(t_), value(value_), derivative(derivative_) {}  
+        const std::vector<T> & derivative_,
+                const double & epoch = 0.0
+ 
+    ) : t(t_), value(value_), derivative(derivative_), _epoch(epoch) {}  
   
 };  
 
@@ -273,18 +280,20 @@ private:
     /** @brief The sampled data for rotation. */
     SampledData<T> _data;  
     /** @brief The interval search object for finding the appropriate time interval. */
-    std::unique_ptr<interpolation::IntervalSearch> _search;  
+    std::unique_ptr<interpolation::IntervalSearch> _search;
 public:
     /** 
      * @brief Constructs a BSampledRotation strategy with time points and values.
      * @param t_ The time points.
      * @param value_ The sampled rotation values at the time points.
+     * @param epoch Reference time of the sampled data, representing the origin of the time axis in another time scale, default is 0.0.
      */
     BSampledRotation(  
         const std::vector<double> & t_,  
-        const std::vector<T> & value_  
+        const std::vector<T> & value_,
+        const double & epoch = 0.0  
     ) :   
-        _data(SampledData(t_, value_)) {  
+        _data(SampledData(t_, value_, {}, epoch)) {  
         _search = std::make_unique<interpolation::LinearCachedIntervalSearch>(  
             std::make_shared<const std::vector<double>>(_data.t)  
         );  
@@ -296,9 +305,10 @@ public:
      * @param fg The frame graph.
      * @return The interpolated rotation value.
      */
-    T operator()(double time, const FrameGraph<Backend> &fg) const {  
-        int i = _search->find(time);  
-        double alpha = (time - _data.t[i]) / (_data.t[i+1] - _data.t[i]);  
+    T operator()(double time, const FrameGraph<Backend> &fg) const {
+        double t = time - _data._epoch;  
+        int i = _search->find(t);  
+        double alpha = (t - _data.t[i]) / (_data.t[i+1] - _data.t[i]);  
         return Backend::slerp(_data.value[i], _data.value[i + 1], alpha);  
     }  
 };  
@@ -324,11 +334,13 @@ public:
     * 
     * @param t_ The time points.
     * @param value_ The sampled translation values at the time points.
+    * @param epoch Reference time of the sampled data, representing the origin of the time axis in another time scale, default is 0.0.
     */
     BSampledTranslation(  
         const std::vector<double> & t_,  
-        const std::vector<T> & value_  
-    ) : _data(SampledData(t_, value_)) {  
+        const std::vector<T> & value_,  
+        const double & epoch = 0.0  
+    ) : _data(SampledData(t_, value_, {}, epoch)) {  
         _interp = std::make_unique<interpolation::CatmullRomInterpolator<T>>(  
             std::make_shared<const std::vector<double>>(_data.t),  
             std::make_shared<const std::vector<T>>(_data.value)  
@@ -344,12 +356,14 @@ public:
      * @param t_ The time points.
      * @param value_ The sampled translation values at the time points.
      * @param derivative_ The derivatives at the time points.
+     * @param epoch Reference time of the sampled data, representing the origin of the time axis in another time scale, default is 0.0.
      */
     BSampledTranslation(  
         const std::vector<double> & t_,  
         const std::vector<T> & value_,  
-        const std::vector<T> & derivative_  
-    ) : _data(SampledData(t_, value_, derivative_)) {  
+        const std::vector<T> & derivative_,  
+        const double & epoch = 0.0  
+    ) : _data(SampledData(t_, value_, derivative_, epoch)) {  
        _interp = std::make_unique<interpolation::CubicHermiteInterpolator<T>>(  
             std::make_shared<const std::vector<double>>(_data.t),  
             std::make_shared<const std::vector<T>>(_data.value),  
@@ -363,7 +377,7 @@ public:
      * @return The interpolated translation value.
      */
     T operator()(double time, const FrameGraph<Backend> &fg) const {  
-        return _interp->eval(time);  
+        return _interp->eval(time - _data._epoch);  
     }  
 };  
   

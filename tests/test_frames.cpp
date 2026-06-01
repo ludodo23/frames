@@ -123,6 +123,31 @@ TEST_CASE("Sampled translation", "[sampled]")
     }
 }
 
+TEST_CASE("Sampled translation with epoch", "[sampled]")
+{
+    EigenFrameGraph g;
+
+    SampledTranslation st({0.0, 10.0}, {Vector3(0,0,0), Vector3(10,0,0)}, 5.0);
+
+    int f = g.add_frame(0,
+        ConstantRotation{EigenBackend::quat_identity()},
+        st);
+    
+    for (int i = 0; i <= 10; ++i) {
+        Vector3 p = g.eval_translation(i + 5.0, f);
+        CAPTURE(i);
+        CAPTURE(p);
+        REQUIRE(isApprox(Vector3(i, 0., 0.), p));
+    }
+
+    for (int i = 0; i <= 10; ++i) {
+        g.update(i + 5.0);
+        CAPTURE(i);
+        Vector3 p = g.position(f, 0);
+        REQUIRE(isApprox(Vector3(i, 0., 0.), p));
+    }
+}
+
 // ============================================================
 // Rotation interpolation
 // ============================================================
@@ -136,6 +161,23 @@ TEST_CASE("Sampled rotation", "[sampled]")
     int f = g.add_frame(0, sr, ConstantTranslation{EigenBackend::vec_zero()});
 
     g.update(0.5);
+
+    Quaternion q = g.attitude(f, 0);
+
+    REQUIRE(std::abs(q.angularDistance(
+        Quaternion(Eigen::AngleAxisd(PI/2, Vector3::UnitZ()))
+    )) < 1e-6);
+}
+
+TEST_CASE("Sampled rotation with epoch", "[sampled]")
+{
+    EigenFrameGraph g;
+
+    SampledRotation sr({0.0, 1.0}, {EigenBackend::quat_identity(), Quaternion(Eigen::AngleAxisd(PI, Vector3::UnitZ()))}, 3.0);
+
+    int f = g.add_frame(0, sr, ConstantTranslation{EigenBackend::vec_zero()});
+
+    g.update(0.5+3.0);
 
     Quaternion q = g.attitude(f, 0);
 
