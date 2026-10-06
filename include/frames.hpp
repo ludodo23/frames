@@ -357,51 +357,78 @@ public:
  
     ) : t(t_), value(value_), derivative(derivative_), _epoch(epoch) {}  
   
-};  
-
+};
+  
+    
 /** 
  * @brief A strategy for sampled rotation.
  * @tparam Backend The backend type that defines the Quaternion type and related operations.
  */
-template <typename Backend>  
-struct BSampledRotation {  
-private:  
-    using T = typename Backend::Quaternion;  
-    /** @brief The sampled data for rotation. */
-    SampledData<T> _data;  
-    /** @brief The interval search object for finding the appropriate time interval. */
-    std::unique_ptr<interpolation::IntervalSearch> _search;
+template <typename Backend>
+struct BSampledRotation {
+
+    using Data       = BSampledRotationData<Backend>;
+    using Quaternion = typename Backend::Quaternion;
+
+private:
+
+    std::shared_ptr<const Data> _data;
+
 public:
     /** 
      * @brief Constructs a BSampledRotation strategy with time points and values.
-     * @param t_ The time points.
-     * @param value_ The sampled rotation values at the time points.
-     * @param epoch Reference time of the sampled data, representing the origin of the time axis in another time scale, default is 0.0.
-     */
-    BSampledRotation(  
-        const std::vector<double> & t_,  
-        const std::vector<T> & value_,
-        const double & epoch = 0.0  
-    ) :   
-        _data(SampledData(t_, value_, {}, epoch)) {  
-        _search = std::make_unique<interpolation::LinearCachedIntervalSearch>(  
-            std::make_shared<const std::vector<double>>(_data.t)  
-        );  
-    }  
-  
+     * @param data The sampled data.
+    explicit BSampledRotation(
+        std::shared_ptr<const Data> data
+    )
+        : _data(std::move(data))
+    {}
+
     /** 
      * @brief Evaluates the rotation at a given time.
      * @param time The time at which to evaluate the rotation.
      * @param fg The frame graph.
      * @return The interpolated rotation value.
      */
-    T operator()(double time, const FrameGraph<Backend> &fg) const {
-        double t = time - _data._epoch;  
-        int i = _search->find(t);  
-        double alpha = (t - _data.t[i]) / (_data.t[i+1] - _data.t[i]);  
-        return Backend::slerp(_data.value[i], _data.value[i + 1], alpha);  
-    }  
-};  
+    Quaternion operator()(
+        double time,
+        const FrameGraph<Backend>& fg
+    ) const
+    {
+        (void)fg;
+
+        const double t =
+            time - _data->_epoch;
+
+        const int i =
+            _data->search->find(t);
+
+        const double x0 =
+            _data->t[i];
+
+        const double x1 =
+            _data->t[i + 1];
+
+        double alpha =
+            (t - x0) / (x1 - x0);
+
+        alpha = interpolation::clamp(
+            alpha,
+            0.0,
+            1.0
+        );
+
+        return Backend::slerp(
+            _data->rotation[i],
+            _data->rotation[i + 1],
+            alpha
+        );
+    }
+
+    std::shared_ptr<const Data> data() const {
+        return _data;
+    }
+}; 
 
 /** 
  * @brief A strategy for sampled translation.
