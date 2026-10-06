@@ -221,6 +221,96 @@ public:
 // Sampled strategies
 // ============================================================
 
+
+
+
+template <typename Backend>
+struct BSampledRotationData {
+
+    using Quaternion = typename Backend::Quaternion;
+    using Vector3    = typename Backend::Vector3;
+
+    std::vector<double> t;
+    std::vector<Quaternion> rotation;
+    std::vector<Vector3> angular_velocity;
+
+    double _epoch{0.0};
+
+    /**
+     * @brief Shared interval search.
+     *
+     * Used both by the rotation strategy and by the
+     * angular velocity interpolator.
+     */
+    std::shared_ptr<interpolation::IntervalSearch> search;
+
+    /**
+     * @brief Linear interpolation of angular velocity.
+     *
+     * Uses the same IntervalSearch as the rotation strategy.
+     */
+    std::shared_ptr<
+        interpolation::Interpolator<Vector3>
+    > angular_velocity_interpolator;
+
+private:
+
+    BSampledRotationData() = delete;
+
+public:
+
+    BSampledRotationData(
+        const std::vector<double>& t_,
+        const std::vector<Quaternion>& rotation_,
+        const std::vector<Vector3>& angular_velocity_,
+        double epoch = 0.0
+    )
+        : t(t_),
+          rotation(rotation_),
+          angular_velocity(angular_velocity_),
+          _epoch(epoch)
+    {
+        if (t.size() != rotation.size()) {
+            INTERP_ERROR(
+                "BSampledRotationData: "
+                "t.size() != rotation.size()"
+            );
+        }
+
+        if (t.size() != angular_velocity.size()) {
+            INTERP_ERROR(
+                "BSampledRotationData: "
+                "t.size() != angular_velocity.size()"
+            );
+        }
+
+        auto xt =
+            std::make_shared<const std::vector<double>>(t);
+
+        /*
+         * One and only one interval search.
+         */
+        search =
+            std::make_shared<
+                interpolation::LinearCachedIntervalSearch
+            >(xt);
+
+        /*
+         * The linear interpolator reuses the same search object.
+         */
+        angular_velocity_interpolator =
+            std::make_shared<
+                interpolation::LinearInterpolator<Vector3>
+            >(
+                std::make_shared<const std::vector<Vector3>>(
+                    angular_velocity
+                ),
+                search
+            );
+    }
+};
+
+
 /**
  * @brief A structure to hold sampled data.
  * @tparam T The type of the sampled data.
