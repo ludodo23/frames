@@ -310,53 +310,151 @@ public:
     }
 };
 
-
 /**
- * @brief A structure to hold sampled data.
- * @tparam T The type of the sampled data.
+ * @brief Shared sampled translation data.
+ *
+ * The interpolation model is selected from the constructor:
+ *
+ *   position                       -> Catmull-Rom
+ *   position + velocity            -> Cubic Hermite
+ *   position + velocity + accel.   -> Quintic Hermite
+ *
+ * The same interpolator is shared by the translation and velocity
+ * strategies.
  */
-template <typename T>  
-struct SampledData { 
-    /** @brief The time points. */
-    std::vector<double> t;  
-    /** @brief The sampled values. */
-    std::vector<T> value;  
-    /** @brief The derivatives at the time points. */
-    std::vector<T> derivative;  
-    /** @brief Reference time of the sampled data, representing the origin of the time axis in another time scale. */
-    double _epoch;
-  
-private:  
-    SampledData() = delete;  
-  
+template <typename Backend>
+struct BSampledTranslationData {
+
+    using T = typename Backend::Vector3;
+
+    std::vector<double> t;
+    std::vector<T> position;
+    std::vector<T> velocity;
+    std::vector<T> acceleration;
+
+    double _epoch{0.0};
+
+    std::shared_ptr<interpolation::Interpolator<T>> interpolator;
+
+private:
+
+    BSampledTranslationData() = delete;
+
 public:
-    /** 
-     * @brief Constructs a SampledData structure with time points and values.
-     * @param t_ The time points.
-     * @param value_ The sampled values at the time points.
-     * @param epoch Reference time of the sampled data, representing the origin of the time axis in another time scale, default is 0.0.
+
+    /**
+     * @brief Position only.
+     *
+     * Uses Catmull-Rom interpolation.
      */
-    SampledData(  
-        const std::vector<double> & t_,  
-        const std::vector<T> & value_,
-        const double & epoch = 0.0
-    ) : SampledData(t_, value_, {}, epoch) {}  
-  
-    /** 
-     * @brief Constructs a SampledData structure with time points, values, and derivatives.
-     * @param t_ The time points.
-     * @param value_ The sampled values at the time points.
-     * @param derivative_ The derivatives at the time points.
-     * @param epoch Reference time of the sampled data, representing the origin of the time axis in another time scale, default is 0.0.
+    BSampledTranslationData(
+        const std::vector<double>& t_,
+        const std::vector<T>& position_,
+        double epoch = 0.0
+    )
+        : t(t_),
+          position(position_),
+          _epoch(epoch)
+    {
+        auto xt =
+            std::make_shared<const std::vector<double>>(t);
+
+        auto yp =
+            std::make_shared<const std::vector<T>>(position);
+
+        interpolator =
+            std::make_shared<
+                interpolation::CatmullRomInterpolator<T>
+            >(xt, yp);
+    }
+
+    /**
+     * @brief Position + velocity.
+     *
+     * Uses cubic Hermite interpolation.
      */
-    SampledData(  
-        const std::vector<double> & t_,  
-        const std::vector<T> & value_,  
-        const std::vector<T> & derivative_,
-                const double & epoch = 0.0
- 
-    ) : t(t_), value(value_), derivative(derivative_), _epoch(epoch) {}  
-  
+    BSampledTranslationData(
+        const std::vector<double>& t_,
+        const std::vector<T>& position_,
+        const std::vector<T>& velocity_,
+        double epoch = 0.0
+    )
+        : t(t_),
+          position(position_),
+          velocity(velocity_),
+          _epoch(epoch)
+    {
+        if (velocity.size() != position.size()) {
+            INTERP_ERROR(
+                "BSampledTranslationData: "
+                "velocity.size() != position.size()"
+            );
+        }
+
+        auto xt =
+            std::make_shared<const std::vector<double>>(t);
+
+        auto yp =
+            std::make_shared<const std::vector<T>>(position);
+
+        auto vp =
+            std::make_shared<const std::vector<T>>(velocity);
+
+        interpolator =
+            std::make_shared<
+                interpolation::CubicHermiteInterpolator<T>
+            >(xt, yp, vp);
+    }
+
+    /**
+     * @brief Position + velocity + acceleration.
+     *
+     * Uses quintic Hermite interpolation.
+     */
+    BSampledTranslationData(
+        const std::vector<double>& t_,
+        const std::vector<T>& position_,
+        const std::vector<T>& velocity_,
+        const std::vector<T>& acceleration_,
+        double epoch = 0.0
+    )
+        : t(t_),
+          position(position_),
+          velocity(velocity_),
+          acceleration(acceleration_),
+          _epoch(epoch)
+    {
+        if (velocity.size() != position.size()) {
+            INTERP_ERROR(
+                "BSampledTranslationData: "
+                "velocity.size() != position.size()"
+            );
+        }
+
+        if (acceleration.size() != position.size()) {
+            INTERP_ERROR(
+                "BSampledTranslationData: "
+                "acceleration.size() != position.size()"
+            );
+        }
+
+        auto xt =
+            std::make_shared<const std::vector<double>>(t);
+
+        auto yp =
+            std::make_shared<const std::vector<T>>(position);
+
+        auto vp =
+            std::make_shared<const std::vector<T>>(velocity);
+
+        auto ap =
+            std::make_shared<const std::vector<T>>(acceleration);
+
+        interpolator =
+            std::make_shared<
+                interpolation::QuinticHermiteInterpolator<T>
+            >(xt, yp, vp, ap);
+    }
 };
   
     
