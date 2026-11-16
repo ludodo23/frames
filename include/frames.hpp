@@ -70,6 +70,108 @@ namespace frames
 // Forward  
 template <typename Backend>  
 class FrameGraph;  
+/**
+ * @brief Backend-independent graph of frames (topology only).
+ * 
+ * This class manages the frame hierarchy: parent/child relationships,
+ * alive/dead status, and ID recycling. It is backend-agnostic and
+ * stored as a shared_ptr inside FrameGraph<Backend>.
+ */
+class Graph {
+    std::vector<int> _parent;      // parent id for each frame ( -1 for root )
+    std::vector<std::vector<int>> _children; // children ids for each frame
+    std::vector<int> _alive;       // 1 = alive, 0 = dead
+    std::vector<int> _free_list;   // recycled ids
+
+public:
+    Graph() {
+        // Root frame (id 0) is added later by FrameGraph::_add_root()
+        _free_list.clear();
+    }
+
+    /** @brief Returns the number of frames in the graph. */
+    int size() const { return (int)_parent.size(); }
+
+    /** @brief Adds a new frame as a child of parent p.
+     *  @param p Parent frame id ( -1 for world/root ).
+     *  @param reuse 
+     * @return The id of the newly added frame (recycled if possible). */
+    int add_node(int p, bool& reuse) {
+        int id;
+        reuse = false;
+        if (!_free_list.empty()) {
+            if (_free_list.back() > p) {
+                reuse = true;
+            }
+        }
+        if (reuse) {
+            id = _free_list.back();
+            _free_list.pop_back();
+            _parent[id] = p;
+            _children[id].clear();
+            _alive[id] = 1;
+        } else {
+            id = size();
+            _parent.push_back(p);
+            _children.push_back({});
+            _alive.push_back(1);
+        }
+        if (p >= 0) {
+            _children[p].push_back(id);
+        }
+        return id;
+    }
+
+    /** @brief Removes a frame and its entire subtree (iterative DFS).
+     *  @param root The frame id to remove.
+     * @return Vector of removed frame ids. */
+    std::vector<int> remove_subtree(int root) {
+        std::vector<int> removed_ids;
+        std::vector<int> stack;
+        stack.push_back(root);
+
+        while (!stack.empty()) {
+            int node = stack.back();
+            stack.pop_back();
+
+            if (!_alive[node]) continue;
+
+            _alive[node] = 0;
+            _free_list.push_back(node);
+            removed_ids.push_back(node);
+
+            for (int child : _children[node]) {
+                stack.push_back(child);
+            }
+
+            _children[node].clear();
+        }
+        return removed_ids;
+    }
+
+    /** @brief Returns the parent frame id. */
+    int parent(int id) const { return _parent[id]; }
+
+    /** @brief Returns a const reference to the children vector of a frame. */
+    const std::vector<int>& children(int id) const { return _children[id]; }
+
+    /** @brief Checks if a frame is alive (not removed). */
+    bool is_alive(int id) const { return _alive[id]; }
+
+    /** @brief Returns a vector of ancestor ids from root down to the given frame. */
+    std::vector<int> ancestors(int id) const {
+        std::vector<int> ancestors;
+        while (id != -1) {
+            ancestors.push_back(id);
+            id = _parent[id];
+        }
+        std::reverse(ancestors.begin(), ancestors.end());
+        return ancestors;
+    }
+
+    /** @brief Returns true if the graph has been modified since last update. */
+    bool is_dirty() const { return false; } // placeholder, not used currently
+};
 
 /**  
  * @brief A strategy for constant rotation.
@@ -702,13 +804,15 @@ class FrameGraph {
   
 public:  
     using Vector3 = typename B::Vector3;  
-    using Quaternion = typename B::Quaternion;  
+    using Quaternion = typename B::Quaternion;
+
+    FrameGraph() : FrameGraph(std::make_shared<Graph>()) {}
   
     /** 
      * @brief Constructs a new frame graph.
      */
-    FrameGraph() :  
-        _clean(true) {  
+    FrameGraph(std::shared_ptr<Graph> graph) :  
+        _graph(std::move(graph)), _clean(true) {  
         _add_root();   
     }  
   
@@ -725,46 +829,21 @@ public:
      * @return The id of the newly added frame.
      */
     template <typename RotationType, typename TranslationType>  
-    int add_frame(int p, RotationType&& rotation, TranslationType&& translation) {  
-        int id;
+    int add_frame(int p, RotationType&& rotation, TranslationType&& translation) {
         bool reuse = false;
-        if (!_free_list.empty()) {
-            if(_free_list.back() > p) {
-                reuse = true;
-            }
-        }
+        int id = _graph->add_node(p, reuse);
         // std::cout << "reuse : " << reuse << std::endl;
         if (reuse) {  
-            id = _free_list.back();
-            _free_list.pop_back();  
             _set_rotation<RotationType>(id, std::move(rotation));  
             _set_translation<TranslationType>(id, std::move(translation));  
-            _parent[id] = p;  
-            _children[id].clear();  
-            _alive[id] = 1;  
         } else { 
-            assert(p < size());
-            id = size();
-
             // std::cout << "id = " << id << "\n";
  
             _add_rotation<RotationType>(std::move(rotation)); 
             // std::cout << "rotation added." << std::endl; 
             _add_translation<TranslationType>(std::move(translation));
             // std::cout << "translation added." << std::endl;
-            _id.push_back(id);
-            // std::cout << "id added = " << _id.back() << std::endl;
-            _parent.push_back(p);
-            // std::cout << "parent added = " << _parent.back() << std::endl;
-            _children.emplace_back();  
-            // std::cout << "children added" << std::endl;  
-            _alive.push_back(1); 
-            // std::cout << "alive added = " << _alive.back() << std::endl;
-
         } 
-        if (p >= 0) {
-            _children[p].push_back(id);
-        }
         _clean = false;
         return id;
     }  
@@ -775,7 +854,7 @@ public:
      * @return The parent frame id.
      */
     int get_parent(int id) const {
-        return _parent[id];
+        return _graph->parent(id);
     }
 
     /** 
@@ -784,7 +863,7 @@ public:
      * @return A vector containing the deleted frames ids.
      */
     std::vector<int> remove_frame(int id) {
-        return _remove_subtree(id);
+        return _graph->remove_subtree(id);
     }
     /** 
      * @brief Gets the ancestors of a frame.
@@ -799,16 +878,8 @@ public:
      * @param id The frame id.
      * @return A vector containing the ids of the ancestors.
      */
-    std::vector<int> get_ancestors(int id) const {  
-        std::vector<int> ancestors;  
-
-        while (id != -1) {  
-            ancestors.push_back(id);  
-            id = _parent[id];  
-        }  
-
-        std::reverse(ancestors.begin(), ancestors.end());  
-        return ancestors;  
+    std::vector<int> get_ancestors(int id) const {
+        return _graph->ancestors(id);
     }  
   
     /**
@@ -816,8 +887,8 @@ public:
      * @param id The frame id.
      * @return A reference to the vector of child frame ids.
      */
-    const std::vector<int>& get_children(int id) const {  
-        return _children[id];  
+    const std::vector<int>& get_children(int id) const {
+        return _graph->children(id);
     }  
 
     /** 
@@ -863,7 +934,7 @@ public:
         if (id == 0) {
             return B::quat_identity();
         } else {
-            return B::compose_rotation(this->eval_rotation(time, _parent[id]), _rot_fn[id].eval(time, *this));
+            return B::compose_rotation(this->eval_rotation(time, _graph->parent(id)), _rot_fn[id].eval(time, *this));
         }
     }
 
@@ -887,9 +958,9 @@ public:
         if (id == 0) {
             return B::vec_zero();
         } else {
-            Quaternion Qwp = this->eval_rotation(time, _parent[id]); 
+            Quaternion Qwp = this->eval_rotation(time, _graph->parent(id)); 
             Vector3 PIp =  _pos_fn[id].eval(time, *this);
-            return this->eval_translation(time, _parent[id]) + B::rotate(Qwp, PIp);
+            return this->eval_translation(time, _graph->parent(id)) + B::rotate(Qwp, PIp);
         }
     }
   
@@ -1014,7 +1085,7 @@ public:
      * @return true if the frame is alive, false otherwise.
      */
     bool is_alive(int id) const {  
-        return _alive[id];  
+        return _graph->is_alive(id);  
     }
 
     /**
@@ -1030,13 +1101,12 @@ private:
   
     void _update(double t) {
         for (size_t id = 1; id < size(); ++id) {
-            if (_alive[id]) {
+            if (_graph->is_alive(id)) {
                 Quaternion q = _rot_fn[id].eval(t, *this);  
                 Vector3 p = _pos_fn[id].eval(t, *this);
 
-                int p_id = _parent[id];
+                int p_id = _graph->parent(id);
                 // std::cout << " frame " << id << " (parent = " << p_id << ") --> alive" << std::endl;
-
     
                 // Q_world_i = Q_world_parent * Q_parent_i  
                 _world_rotation[id] = B::compose_rotation(_world_rotation[p_id], q);  
@@ -1060,12 +1130,9 @@ private:
     }  
       
     int _add_root() {  
-        int id = size();
         // std::cout << "root id = " << id << std::endl;
-        _children.emplace_back();
-        add_frame(-1, BConstantRotation<Backend>{B::quat_identity()}, BConstantTranslation<Backend>{B::vec_zero()});
+        return add_frame(-1, BConstantRotation<Backend>{B::quat_identity()}, BConstantTranslation<Backend>{B::vec_zero()});
         // std::cout << "root added." << std::endl;
-        return id;  
     }  
   
     template <typename RotationType>  
@@ -1090,51 +1157,17 @@ private:
         _pos_fn[id] = Interface<Vector3>(std::move(translation));
     }
 
-    // ----------------------------------------------------  
-    // REMOVE SUBTREE (iterative DFS, O(k))  
-    // ----------------------------------------------------  
-    std::vector<int> _remove_subtree(int root) {  
-    std::vector<int> removed_ids;  
-    std::vector<int> stack;  
-    stack.push_back(root);  
 
-    while (!stack.empty()) {  
-        int node = stack.back();  
-        stack.pop_back();  
-
-        if (!_alive[node]) continue;  
-
-        _alive[node] = 0;  
-        _free_list.push_back(node);  
-        removed_ids.push_back(node);  
-
-        for (int child : _children[node]) {  
-            stack.push_back(child);  
-        }  
-
-        _children[node].clear();  
-    }  
-
-    return removed_ids;  
-}
+    /**@brief graph. */
+    std::shared_ptr<Graph> _graph;
     /** @brief World rotations of the frames. */
     std::vector<Quaternion> _world_rotation; 
     /** @brief World positions of the frames. */
     std::vector<Vector3> _world_position;
-    /** @brief IDs of the frames. */
-    std::vector<int> _id;
-    /** @brief Parent IDs of the frames. */
-    std::vector<int> _parent;
-    /** @brief Child IDs of the frames. */
-    std::vector<std::vector<int>> _children;
     /** @brief Rotation functions for the frames. */
     std::vector<Interface<Quaternion>> _rot_fn;  
     /** @brief Translation functions for the frames. */
     std::vector<Interface<Vector3>> _pos_fn;
-    /** @brief Alive status of the frames. */
-    std::vector<int> _alive; // 1 = alive, 0 = dead  
-    /** @brief List of free IDs for recycling. */
-    std::vector<int> _free_list; // recycled ids    
   
     /** @brief Last update time. */
     double _last_time = std::numeric_limits<double>::quiet_NaN();  
