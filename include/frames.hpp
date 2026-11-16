@@ -55,7 +55,7 @@
   
 #include <interpolation.hpp>  
   
-#define FRAMES_VERSION "0.1.0"  
+#define FRAMES_VERSION "0.2.0"  
 
 /**  
  * @brief The main namespace for the frames library.  
