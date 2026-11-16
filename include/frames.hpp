@@ -262,6 +262,35 @@ public:
     BSampledRotationData(
         const std::vector<double>& t_,
         const std::vector<Quaternion>& rotation_,
+        double epoch = 0.0
+    ) 
+        : t(t_),
+        rotation(rotation_),
+        _epoch(epoch) {
+        if (t.size() != rotation.size()) {
+            INTERP_ERROR(
+                "BSampledRotationData: "
+                "t.size() != rotation.size()"
+            );
+        }
+
+        auto xt =
+            std::make_shared<const std::vector<double>>(t);
+
+        /*
+         * One and only one interval search.
+         */
+        search =
+            std::make_shared<
+                interpolation::LinearCachedIntervalSearch
+            >(xt);
+
+
+    }
+
+    BSampledRotationData(
+        const std::vector<double>& t_,
+        const std::vector<Quaternion>& rotation_,
         const std::vector<Vector3>& angular_velocity_,
         double epoch = 0.0
     )
@@ -476,10 +505,32 @@ public:
     /** 
      * @brief Constructs a BSampledRotation strategy with time points and values.
      * @param data The sampled data.
+     */
     explicit BSampledRotation(
         std::shared_ptr<const Data> data
     )
         : _data(std::move(data))
+    {}
+
+    explicit BSampledRotation(
+        const std::vector<double>& t,
+        const std::vector<Quaternion>& rotation,
+        const std::vector<typename Backend::Vector3>& angular_velocity,
+        double epoch = 0.0
+    )
+        : _data(std::make_shared<const Data>(
+            t, rotation, angular_velocity, epoch
+        ))
+    {}
+
+    explicit BSampledRotation(
+        const std::vector<double>& t,
+        const std::vector<Quaternion>& rotation,
+        double epoch = 0.0
+    )
+        : _data(std::make_shared<const Data>(
+            t, rotation, epoch
+        ))
     {}
 
     /** 
@@ -535,11 +586,11 @@ public:
 template <typename Backend>  
 struct BSampledTranslation {  
 private:  
+
+    using Data       = BSampledTranslationData<Backend>;
     using T = typename Backend::Vector3;
     /** @brief The sampled data for translation. */
-    SampledData<T> _data;  
-    /** @brief The interpolator for evaluating the translation at a given time. */
-    std::unique_ptr<interpolation::Interpolator<T>> _interp;  
+    std::shared_ptr<const Data> _data;
   
 public:  
     /** 
@@ -555,11 +606,7 @@ public:
         const std::vector<double> & t_,  
         const std::vector<T> & value_,  
         const double & epoch = 0.0  
-    ) : _data(SampledData(t_, value_, {}, epoch)) {  
-        _interp = std::make_unique<interpolation::CatmullRomInterpolator<T>>(  
-            std::make_shared<const std::vector<double>>(_data.t),  
-            std::make_shared<const std::vector<T>>(_data.value)  
-        );  
+    ) : _data(std::make_shared<const Data>(t_, value_, epoch)) {  
     }  
   
     /** 
@@ -578,12 +625,7 @@ public:
         const std::vector<T> & value_,  
         const std::vector<T> & derivative_,  
         const double & epoch = 0.0  
-    ) : _data(SampledData(t_, value_, derivative_, epoch)) {  
-       _interp = std::make_unique<interpolation::CubicHermiteInterpolator<T>>(  
-            std::make_shared<const std::vector<double>>(_data.t),  
-            std::make_shared<const std::vector<T>>(_data.value),  
-            std::make_shared<const std::vector<T>>(_data.derivative)  
-        );  
+    ) : _data(std::make_shared<const Data>(t_, value_, derivative_, epoch)) {  
     } 
     /** 
      * @brief Evaluates the translation at a given time.
@@ -592,7 +634,7 @@ public:
      * @return The interpolated translation value.
      */
     T operator()(double time, const FrameGraph<Backend> &fg) const {  
-        return _interp->eval(time - _data._epoch);  
+        return _data->interpolator->eval(time - _data->_epoch);  
     }  
 };  
   
